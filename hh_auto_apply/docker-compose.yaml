@@ -1,0 +1,8 @@
+﻿version: "0.1.0"
+services:
+    hh-autoclicker:
+      container_name: hh-autoclicker
+      build: .
+      volumes:
+        # Монтирование конфигурационного файла в контейнер
+        - ./config/default.json:/app/config.json

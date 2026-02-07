@@ -4,7 +4,7 @@
     "password": "your_password"
   },
   "search_filters": {
-    "keywords": ["Python", "разработчик", "программист"],
+    "resume_id": "7953ce22ff0e79b4b801231231239",
     "salary_min": 100000,
     "area": "Москва",
     "experience": "between1And3",
