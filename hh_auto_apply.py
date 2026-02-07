@@ -269,7 +269,7 @@ class HHAutoApply:
             
             # Ждем, пока страница полностью загрузится
             logger.info("Ожидание загрузки страницы...")
-            time.sleep(5)  # Даем React-приложению время на инициализацию
+            time.sleep(1)  # Даем React-приложению время на инициализацию
             
             # Проверяем, что React-приложение загрузилось
             try:
@@ -280,7 +280,7 @@ class HHAutoApply:
             
             # Ждем появления формы входа (React-компонент)
             logger.info("Ожидание появления формы входа...")
-            time.sleep(3)
+            time.sleep(1)
             
             # Ждем загрузки React-приложения - проверяем наличие React-корня
             logger.info("Ожидание загрузки React-приложения...")
@@ -326,7 +326,7 @@ class HHAutoApply:
                 time.sleep(0.5)
                 self.driver.execute_script("arguments[0].click();", submit_button)
                 logger.info("✓ Нажата кнопка 'Войти'")
-                time.sleep(3)
+                time.sleep(1)
                 
                 # Логируем состояние после нажатия "Войти"
                 self._log_page_elements("После нажатия кнопки 'Войти'")
@@ -540,39 +540,244 @@ class HHAutoApply:
                 self._log_page_elements("После ввода email")
             else:
                 logger.error("✗ Поле email не найдено, не могу заполнить")
-            
-            # Варианты селекторов для кнопки "Войти с паролем" / "Продолжить" / "Дальше"
-            logger.info("=" * 60)
-            logger.info("ШАГ 3: Поиск кнопки 'Войти с паролем' / 'Продолжить'...")
-            logger.info("=" * 60)
-            # ПРИОРИТЕТ: сначала ищем кнопку "Войти с паролем" для почты
-            continue_btn = None
-            
-            # Сначала ищем кнопку "Войти с паролем" с data-qa='expand-login-by-password'
-            try:
-                logger.debug("Ищем кнопку 'Войти с паролем' с data-qa='expand-login-by-password'")
-                password_btn = self.driver.find_element(By.CSS_SELECTOR, "button[data-qa='expand-login-by-password']")
-                if password_btn.is_displayed() and password_btn.is_enabled():
-                    continue_btn = password_btn
-                    logger.info(f"✓ Найдена кнопка 'Войти с паролем' с data-qa='expand-login-by-password', текст: '{password_btn.text.strip()}'")
-                    self._log_element_details(continue_btn, "Кнопка 'Войти с паролем'")
-            except NoSuchElementException:
-                logger.debug("Кнопка 'Войти с паролем' не найдена через data-qa")
-            except Exception as e:
-                logger.debug(f"Ошибка при поиске кнопки 'Войти с паролем': {e}")
-            
-            # Если не нашли "Войти с паролем", ищем другие варианты
-            if not continue_btn:
-                continue_selectors = [
-                    "button[data-qa='account-login-submit']",
-                    "button[type='submit']",
-                    "button.magritte-button[type='submit']",
-                    ".magritte-button[type='submit']"
+            # Если пользователь вручную авторизуется, то не нужно искать кнопку "Войти с паролем"
+            if not self.config["application_settings"]["manual_authorization"]:
+                    
+                # Варианты селекторов для кнопки "Войти с паролем" / "Продолжить" / "Дальше"
+                logger.info("=" * 60)
+                logger.info("ШАГ 3: Поиск кнопки 'Войти с паролем' / 'Продолжить'...")
+                logger.info("=" * 60)
+                # ПРИОРИТЕТ: сначала ищем кнопку "Войти с паролем" для почты
+                continue_btn = None
+                
+                # Сначала ищем кнопку "Войти с паролем" с data-qa='expand-login-by-password'
+                try:
+                    logger.debug("Ищем кнопку 'Войти с паролем' с data-qa='expand-login-by-password'")
+                    password_btn = self.driver.find_element(By.CSS_SELECTOR, "button[data-qa='expand-login-by-password']")
+                    if password_btn.is_displayed() and password_btn.is_enabled():
+                        continue_btn = password_btn
+                        logger.info(f"✓ Найдена кнопка 'Войти с паролем' с data-qa='expand-login-by-password', текст: '{password_btn.text.strip()}'")
+                        self._log_element_details(continue_btn, "Кнопка 'Войти с паролем'")
+                except NoSuchElementException:
+                    logger.debug("Кнопка 'Войти с паролем' не найдена через data-qa")
+                except Exception as e:
+                    logger.debug(f"Ошибка при поиске кнопки 'Войти с паролем': {e}")
+                
+                # Если не нашли "Войти с паролем", ищем другие варианты
+                if not continue_btn:
+                    continue_selectors = [
+                        "button[data-qa='account-login-submit']",
+                        "button[type='submit']",
+                        "button.magritte-button[type='submit']",
+                        ".magritte-button[type='submit']"
+                    ]
+                    
+                    for selector in continue_selectors:
+                        try:
+                            logger.debug(f"Пробуем селектор для кнопки продолжения: {selector}")
+                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            logger.debug(f"  Найдено элементов с селектором '{selector}': {len(elements)}")
+                            for btn in elements:
+                                try:
+                                    is_displayed = btn.is_displayed()
+                                    is_enabled = btn.is_enabled()
+                                    text = btn.text.strip()
+                                    data_qa = btn.get_attribute('data-qa') or ''
+                                    logger.debug(f"    Кнопка: текст='{text[:50]}', data-qa='{data_qa}', видима={is_displayed}, активна={is_enabled}")
+                                    
+                                    if is_displayed and is_enabled:
+                                        text_lower = text.lower()
+                                        # Игнорируем кнопку "Дальше" - она для телефона
+                                        if 'дальше' in text_lower and 'expand-login-by-password' not in data_qa:
+                                            logger.debug(f"    Пропускаем кнопку 'Дальше' - она для телефона")
+                                            continue
+                                        # Ищем кнопки с текстом "парол" или другие подходящие
+                                        if 'парол' in text_lower or 'продолж' in text_lower:
+                                            continue_btn = btn
+                                            logger.info(f"✓ Найдена кнопка продолжения с селектором: {selector}, текст: '{text}'")
+                                            self._log_element_details(continue_btn, "Кнопка продолжения")
+                                            break
+                                except Exception as e:
+                                    logger.debug(f"    Ошибка при проверке кнопки: {e}")
+                                    continue
+                            if continue_btn:
+                                break
+                        except NoSuchElementException:
+                            logger.debug(f"  Селектор '{selector}' не нашел элементов")
+                            continue
+                        except Exception as e:
+                            logger.debug(f"  Ошибка с селектором '{selector}': {e}")
+                            continue
+                
+                # Если не нашли через селекторы, пробуем через JavaScript
+                if not continue_btn:
+                    logger.info("Пробуем найти кнопку 'Войти с паролем' через JavaScript...")
+                    try:
+                        continue_btn = self.driver.execute_script("""
+                            // Сначала ищем кнопку "Войти с паролем" с data-qa='expand-login-by-password'
+                            var passwordBtn = document.querySelector('button[data-qa="expand-login-by-password"]');
+                            if (passwordBtn && passwordBtn.offsetParent !== null && !passwordBtn.disabled) {
+                                return passwordBtn;
+                            }
+                            
+                            // Если не нашли, ищем другие кнопки, но игнорируем "Дальше"
+                            var buttons = document.querySelectorAll('button[type="submit"], button[data-qa*="submit"], button[data-qa*="login"]');
+                            for (var i = 0; i < buttons.length; i++) {
+                                var btn = buttons[i];
+                                if (btn.offsetParent !== null && !btn.disabled) {
+                                    var text = (btn.textContent || btn.innerText || '').toLowerCase();
+                                    var dataQa = (btn.getAttribute('data-qa') || '').toLowerCase();
+                                    // Игнорируем кнопку "Дальше" - она для телефона
+                                    if (text.includes('дальше') && !dataQa.includes('expand-login-by-password')) {
+                                        continue;
+                                    }
+                                    // Ищем кнопки с текстом "парол"
+                                    if (text.includes('парол')) {
+                                        return btn;
+                                    }
+                                }
+                            }
+                            return null;
+                        """)
+                        if continue_btn:
+                            logger.info("Кнопка 'Войти с паролем' найдена через JavaScript")
+                    except Exception as e:
+                        logger.debug(f"Ошибка при поиске кнопки через JavaScript: {e}")
+                
+                if continue_btn:
+                    try:
+                        logger.info("Попытка клика на кнопку 'Войти с паролем'...")
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", continue_btn)
+                        time.sleep(0.5)
+                        self.driver.execute_script("arguments[0].click();", continue_btn)
+                        logger.info("✓ Нажата кнопка 'Войти с паролем' / 'Продолжить'")
+                        time.sleep(1)
+                        
+                        # Логируем состояние после клика
+                        self._log_page_elements("После клика на кнопку 'Войти с паролем'")
+                    except ElementClickInterceptedException:
+                        logger.warning("Кнопка перехвачена, пробуем кликнуть через JS")
+                        self.driver.execute_script("arguments[0].click();", continue_btn)
+                        time.sleep(1)
+                else:
+                    # Пробуем нажать Enter в поле email
+                    logger.warning("✗ Кнопка 'Войти с паролем' не найдена, пробуем нажать Enter")
+                    if email_input:
+                        email_input.send_keys(Keys.RETURN)
+                        time.sleep(1)
+                    else:
+                        logger.error("Поле email тоже не найдено, не могу продолжить")
+                        self._log_page_elements("Кнопка 'Войти с паролем' не найдена - логируем все элементы")
+                
+                # Заполнение пароля
+                logger.info("=" * 60)
+                logger.info("ШАГ 4: Ожидание появления поля пароля...")
+                logger.info("=" * 60)
+                time.sleep(2)
+                
+                password_selectors = [
+                    "input[data-qa='login-input-password']",
+                    "input[name='password']",
+                    "input[type='password']",
+                    "input[autocomplete='current-password']",
+                    "input[autocomplete='password']",
+                    "input#password",
+                    "input.magritte-input[type='password']"
                 ]
                 
-                for selector in continue_selectors:
+                password_input = None
+                # Пробуем найти поле несколько раз с задержками
+                for attempt in range(5):
+                    logger.debug(f"Попытка {attempt + 1}/5: поиск поля пароля...")
+                    for selector in password_selectors:
+                        try:
+                            elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                            logger.debug(f"  Селектор '{selector}': найдено {len(elements)} элементов")
+                            for elem in elements:
+                                try:
+                                    is_displayed = elem.is_displayed()
+                                    is_enabled = elem.is_enabled()
+                                    placeholder = elem.get_attribute('placeholder') or ''
+                                    logger.debug(f"    Поле пароля: placeholder='{placeholder}', видимо={is_displayed}, активно={is_enabled}")
+                                    
+                                    if is_displayed and is_enabled:
+                                        password_input = elem
+                                        logger.info(f"✓ Найдено поле пароля с селектором: {selector}")
+                                        self._log_element_details(password_input, "Поле пароля")
+                                        break
+                                except Exception as e:
+                                    logger.debug(f"    Ошибка при проверке поля пароля: {e}")
+                                    continue
+                            if password_input:
+                                break
+                        except Exception as e:
+                            logger.debug(f"  Ошибка с селектором '{selector}': {e}")
+                            continue
+                    
+                    if password_input:
+                        break
+                    
+                    logger.debug(f"Попытка {attempt + 1}/5: поле пароля еще не появилось, ждем...")
+                    time.sleep(2)
+                
+                # Если не нашли через селекторы, пробуем через JavaScript
+                if not password_input:
+                    logger.info("Пробуем найти поле пароля через JavaScript...")
                     try:
-                        logger.debug(f"Пробуем селектор для кнопки продолжения: {selector}")
+                        password_input = self.driver.execute_script("""
+                            var inputs = document.querySelectorAll('input[type="password"]');
+                            for (var i = 0; i < inputs.length; i++) {
+                                var input = inputs[i];
+                                if (input.offsetParent !== null && !input.disabled) {
+                                    return input;
+                                }
+                            }
+                            return null;
+                        """)
+                        if password_input:
+                            logger.info("Поле пароля найдено через JavaScript")
+                    except Exception as e:
+                        logger.debug(f"Ошибка при поиске пароля через JavaScript: {e}")
+                
+                if not password_input:
+                    logger.error("Не удалось найти поле для ввода пароля")
+                    logger.info("Попробуйте авторизоваться вручную в открывшемся браузере...")
+                    input("Нажмите Enter после успешной авторизации...")
+                    return True
+                
+                # Прокручиваем к полю пароля
+                if password_input:
+                    logger.info("Заполнение поля пароля...")
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", password_input)
+                    time.sleep(0.5)
+                    
+                    password_input.clear()
+                    time.sleep(0.3)
+                    password_input.click()  # Кликаем для фокуса
+                    time.sleep(0.3)
+                    password_input.send_keys(self.config['hh_credentials']['password'])
+                    logger.info("✓ Пароль введен")
+                    time.sleep(1.5)
+                    
+                    # Логируем состояние после ввода пароля
+                    self._log_page_elements("После ввода пароля")
+                else:
+                    logger.error("✗ Поле пароля не найдено, не могу заполнить")
+                
+                # Нажатие кнопки входа
+                logger.info("=" * 60)
+                logger.info("ШАГ 5: Поиск финальной кнопки входа...")
+                logger.info("=" * 60)
+                login_selectors = [
+                    "button[data-qa='account-login-submit']",
+                    "button[type='submit']",
+                    ".bloko-button[type='submit']"
+                ]
+                
+                login_btn = None
+                for selector in login_selectors:
+                    try:
+                        logger.debug(f"Пробуем селектор для финальной кнопки входа: {selector}")
                         elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                         logger.debug(f"  Найдено элементов с селектором '{selector}': {len(elements)}")
                         for btn in elements:
@@ -580,25 +785,17 @@ class HHAutoApply:
                                 is_displayed = btn.is_displayed()
                                 is_enabled = btn.is_enabled()
                                 text = btn.text.strip()
-                                data_qa = btn.get_attribute('data-qa') or ''
-                                logger.debug(f"    Кнопка: текст='{text[:50]}', data-qa='{data_qa}', видима={is_displayed}, активна={is_enabled}")
+                                logger.debug(f"    Кнопка входа: текст='{text[:50]}', видима={is_displayed}, активна={is_enabled}")
                                 
                                 if is_displayed and is_enabled:
-                                    text_lower = text.lower()
-                                    # Игнорируем кнопку "Дальше" - она для телефона
-                                    if 'дальше' in text_lower and 'expand-login-by-password' not in data_qa:
-                                        logger.debug(f"    Пропускаем кнопку 'Дальше' - она для телефона")
-                                        continue
-                                    # Ищем кнопки с текстом "парол" или другие подходящие
-                                    if 'парол' in text_lower or 'продолж' in text_lower:
-                                        continue_btn = btn
-                                        logger.info(f"✓ Найдена кнопка продолжения с селектором: {selector}, текст: '{text}'")
-                                        self._log_element_details(continue_btn, "Кнопка продолжения")
-                                        break
+                                    login_btn = btn
+                                    logger.info(f"✓ Найдена кнопка входа с селектором: {selector}, текст: '{text}'")
+                                    self._log_element_details(login_btn, "Финальная кнопка входа")
+                                    break
                             except Exception as e:
-                                logger.debug(f"    Ошибка при проверке кнопки: {e}")
+                                logger.debug(f"    Ошибка при проверке кнопки входа: {e}")
                                 continue
-                        if continue_btn:
+                        if login_btn:
                             break
                     except NoSuchElementException:
                         logger.debug(f"  Селектор '{selector}' не нашел элементов")
@@ -606,227 +803,35 @@ class HHAutoApply:
                     except Exception as e:
                         logger.debug(f"  Ошибка с селектором '{selector}': {e}")
                         continue
-            
-            # Если не нашли через селекторы, пробуем через JavaScript
-            if not continue_btn:
-                logger.info("Пробуем найти кнопку 'Войти с паролем' через JavaScript...")
-                try:
-                    continue_btn = self.driver.execute_script("""
-                        // Сначала ищем кнопку "Войти с паролем" с data-qa='expand-login-by-password'
-                        var passwordBtn = document.querySelector('button[data-qa="expand-login-by-password"]');
-                        if (passwordBtn && passwordBtn.offsetParent !== null && !passwordBtn.disabled) {
-                            return passwordBtn;
-                        }
-                        
-                        // Если не нашли, ищем другие кнопки, но игнорируем "Дальше"
-                        var buttons = document.querySelectorAll('button[type="submit"], button[data-qa*="submit"], button[data-qa*="login"]');
-                        for (var i = 0; i < buttons.length; i++) {
-                            var btn = buttons[i];
-                            if (btn.offsetParent !== null && !btn.disabled) {
-                                var text = (btn.textContent || btn.innerText || '').toLowerCase();
-                                var dataQa = (btn.getAttribute('data-qa') || '').toLowerCase();
-                                // Игнорируем кнопку "Дальше" - она для телефона
-                                if (text.includes('дальше') && !dataQa.includes('expand-login-by-password')) {
-                                    continue;
-                                }
-                                // Ищем кнопки с текстом "парол"
-                                if (text.includes('парол')) {
-                                    return btn;
-                                }
-                            }
-                        }
-                        return null;
-                    """)
-                    if continue_btn:
-                        logger.info("Кнопка 'Войти с паролем' найдена через JavaScript")
-                except Exception as e:
-                    logger.debug(f"Ошибка при поиске кнопки через JavaScript: {e}")
-            
-            if continue_btn:
-                try:
-                    logger.info("Попытка клика на кнопку 'Войти с паролем'...")
-                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", continue_btn)
-                    time.sleep(0.5)
-                    self.driver.execute_script("arguments[0].click();", continue_btn)
-                    logger.info("✓ Нажата кнопка 'Войти с паролем' / 'Продолжить'")
-                    time.sleep(3)
-                    
-                    # Логируем состояние после клика
-                    self._log_page_elements("После клика на кнопку 'Войти с паролем'")
-                except ElementClickInterceptedException:
-                    logger.warning("Кнопка перехвачена, пробуем кликнуть через JS")
-                    self.driver.execute_script("arguments[0].click();", continue_btn)
-                    time.sleep(3)
-            else:
-                # Пробуем нажать Enter в поле email
-                logger.warning("✗ Кнопка 'Войти с паролем' не найдена, пробуем нажать Enter")
-                if email_input:
-                    email_input.send_keys(Keys.RETURN)
-                    time.sleep(3)
-                else:
-                    logger.error("Поле email тоже не найдено, не могу продолжить")
-                    self._log_page_elements("Кнопка 'Войти с паролем' не найдена - логируем все элементы")
-            
-            # Заполнение пароля
-            logger.info("=" * 60)
-            logger.info("ШАГ 4: Ожидание появления поля пароля...")
-            logger.info("=" * 60)
-            time.sleep(2)
-            
-            password_selectors = [
-                "input[data-qa='login-input-password']",
-                "input[name='password']",
-                "input[type='password']",
-                "input[autocomplete='current-password']",
-                "input[autocomplete='password']",
-                "input#password",
-                "input.magritte-input[type='password']"
-            ]
-            
-            password_input = None
-            # Пробуем найти поле несколько раз с задержками
-            for attempt in range(5):
-                logger.debug(f"Попытка {attempt + 1}/5: поиск поля пароля...")
-                for selector in password_selectors:
+                
+                if login_btn:
                     try:
-                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        logger.debug(f"  Селектор '{selector}': найдено {len(elements)} элементов")
-                        for elem in elements:
-                            try:
-                                is_displayed = elem.is_displayed()
-                                is_enabled = elem.is_enabled()
-                                placeholder = elem.get_attribute('placeholder') or ''
-                                logger.debug(f"    Поле пароля: placeholder='{placeholder}', видимо={is_displayed}, активно={is_enabled}")
-                                
-                                if is_displayed and is_enabled:
-                                    password_input = elem
-                                    logger.info(f"✓ Найдено поле пароля с селектором: {selector}")
-                                    self._log_element_details(password_input, "Поле пароля")
-                                    break
-                            except Exception as e:
-                                logger.debug(f"    Ошибка при проверке поля пароля: {e}")
-                                continue
-                        if password_input:
-                            break
-                    except Exception as e:
-                        logger.debug(f"  Ошибка с селектором '{selector}': {e}")
-                        continue
-                
-                if password_input:
-                    break
-                
-                logger.debug(f"Попытка {attempt + 1}/5: поле пароля еще не появилось, ждем...")
-                time.sleep(2)
-            
-            # Если не нашли через селекторы, пробуем через JavaScript
-            if not password_input:
-                logger.info("Пробуем найти поле пароля через JavaScript...")
-                try:
-                    password_input = self.driver.execute_script("""
-                        var inputs = document.querySelectorAll('input[type="password"]');
-                        for (var i = 0; i < inputs.length; i++) {
-                            var input = inputs[i];
-                            if (input.offsetParent !== null && !input.disabled) {
-                                return input;
-                            }
-                        }
-                        return null;
-                    """)
-                    if password_input:
-                        logger.info("Поле пароля найдено через JavaScript")
-                except Exception as e:
-                    logger.debug(f"Ошибка при поиске пароля через JavaScript: {e}")
-            
-            if not password_input:
-                logger.error("Не удалось найти поле для ввода пароля")
-                logger.info("Попробуйте авторизоваться вручную в открывшемся браузере...")
-                input("Нажмите Enter после успешной авторизации...")
-                return True
-            
-            # Прокручиваем к полю пароля
-            if password_input:
-                logger.info("Заполнение поля пароля...")
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", password_input)
-                time.sleep(0.5)
-                
-                password_input.clear()
-                time.sleep(0.3)
-                password_input.click()  # Кликаем для фокуса
-                time.sleep(0.3)
-                password_input.send_keys(self.config['hh_credentials']['password'])
-                logger.info("✓ Пароль введен")
-                time.sleep(1.5)
-                
-                # Логируем состояние после ввода пароля
-                self._log_page_elements("После ввода пароля")
-            else:
-                logger.error("✗ Поле пароля не найдено, не могу заполнить")
-            
-            # Нажатие кнопки входа
-            logger.info("=" * 60)
-            logger.info("ШАГ 5: Поиск финальной кнопки входа...")
-            logger.info("=" * 60)
-            login_selectors = [
-                "button[data-qa='account-login-submit']",
-                "button[type='submit']",
-                ".bloko-button[type='submit']"
-            ]
-            
-            login_btn = None
-            for selector in login_selectors:
-                try:
-                    logger.debug(f"Пробуем селектор для финальной кнопки входа: {selector}")
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    logger.debug(f"  Найдено элементов с селектором '{selector}': {len(elements)}")
-                    for btn in elements:
-                        try:
-                            is_displayed = btn.is_displayed()
-                            is_enabled = btn.is_enabled()
-                            text = btn.text.strip()
-                            logger.debug(f"    Кнопка входа: текст='{text[:50]}', видима={is_displayed}, активна={is_enabled}")
-                            
-                            if is_displayed and is_enabled:
-                                login_btn = btn
-                                logger.info(f"✓ Найдена кнопка входа с селектором: {selector}, текст: '{text}'")
-                                self._log_element_details(login_btn, "Финальная кнопка входа")
-                                break
-                        except Exception as e:
-                            logger.debug(f"    Ошибка при проверке кнопки входа: {e}")
-                            continue
-                    if login_btn:
-                        break
-                except NoSuchElementException:
-                    logger.debug(f"  Селектор '{selector}' не нашел элементов")
-                    continue
-                except Exception as e:
-                    logger.debug(f"  Ошибка с селектором '{selector}': {e}")
-                    continue
-            
-            if login_btn:
-                try:
-                    logger.info("Попытка клика на финальную кнопку входа...")
-                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", login_btn)
-                    time.sleep(0.5)
-                    self.driver.execute_script("arguments[0].click();", login_btn)
-                    logger.info("✓ Нажата кнопка входа")
-                except ElementClickInterceptedException:
-                    logger.warning("Кнопка входа перехвачена, пробуем кликнуть через JS")
-                    self.driver.execute_script("arguments[0].click();", login_btn)
-            else:
-                # Пробуем нажать Enter в поле пароля
-                logger.warning("✗ Кнопка входа не найдена, пробуем нажать Enter в поле пароля")
-                if password_input:
-                    password_input.send_keys(Keys.RETURN)
-                    logger.info("Нажат Enter в поле пароля")
+                        logger.info("Попытка клика на финальную кнопку входа...")
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", login_btn)
+                        time.sleep(0.5)
+                        self.driver.execute_script("arguments[0].click();", login_btn)
+                        logger.info("✓ Нажата кнопка входа")
+                    except ElementClickInterceptedException:
+                        logger.warning("Кнопка входа перехвачена, пробуем кликнуть через JS")
+                        self.driver.execute_script("arguments[0].click();", login_btn)
                 else:
-                    logger.error("Поле пароля тоже не найдено")
-                    self._log_page_elements("Кнопка входа не найдена - логируем все элементы")
+                    # Пробуем нажать Enter в поле пароля
+                    logger.warning("✗ Кнопка входа не найдена, пробуем нажать Enter в поле пароля")
+                    if password_input:
+                        password_input.send_keys(Keys.RETURN)
+                        logger.info("Нажат Enter в поле пароля")
+                    else:
+                        logger.error("Поле пароля тоже не найдено")
+                        self._log_page_elements("Кнопка входа не найдена - логируем все элементы")
+            else:
+                logger.info("Авторизация на hh.ru не требуется, т.к. выполняется вручную")
+                time.sleep(1)
             
             # Ожидание успешной авторизации
             logger.info("=" * 60)
             logger.info("ШАГ 6: Проверка успешности авторизации...")
             logger.info("=" * 60)
-            time.sleep(5)
+            time.sleep(1)
             
             # Логируем финальное состояние страницы
             self._log_page_elements("Финальное состояние после входа")
@@ -1050,7 +1055,7 @@ class HHAutoApply:
                 return False
             
             # Поиск кнопки отклика
-            wait = WebDriverWait(self.driver, 10)
+            wait = WebDriverWait(self.driver, 3)
             
             # Различные варианты селекторов для кнопки отклика
             apply_selectors = [
