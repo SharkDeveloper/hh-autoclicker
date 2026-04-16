@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Аккаунт 1",
+    "username": "panfilov200345@gmail.com",
+    "password": "Advicehh4",
+    "resume_id": "",
+    "cover_letter": "Здравствуйте! Я ознакомился с вакансией и готов присоединиться к вашей команде. Мой опыт соответствует требованиям.",
+    "search_filters": {
+      "text": "Python разработчик",
+      "area": "1"
+    },
+    "enabled": true
+  }
+]

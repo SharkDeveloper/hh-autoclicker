@@ -36,12 +36,22 @@ class AppliedVacanciesDB:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS applied_vacancies (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    vacancy_id TEXT UNIQUE NOT NULL,
+                    vacancy_id TEXT NOT NULL,
+                    account TEXT NOT NULL DEFAULT '',
                     vacancy_url TEXT,
                     applied_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status TEXT DEFAULT 'applied'
+                    status TEXT DEFAULT 'applied',
+                    UNIQUE(vacancy_id, account)
                 )
             ''')
+            # Миграция: добавляем столбец account если его нет (для старых БД)
+            try:
+                cursor.execute("ALTER TABLE applied_vacancies ADD COLUMN account TEXT NOT NULL DEFAULT ''")
+                conn.commit()
+                # Перестраиваем UNIQUE после миграции
+                cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_vacancy_account ON applied_vacancies(vacancy_id, account)")
+            except Exception:
+                pass  # Столбец уже существует
             
             # Создание таблицы поисковых запросов
             cursor.execute('''
@@ -61,12 +71,13 @@ class AppliedVacanciesDB:
         except Exception as e:
             self.logger.error(f"Ошибка инициализации базы данных: {e}")
             
-    def is_applied(self, vacancy_id: str) -> bool:
+    def is_applied(self, vacancy_id: str, account: str = "") -> bool:
         """
-        Проверка, откликались ли на вакансию
+        Проверка, откликались ли на вакансию с данного аккаунта
         
         Args:
             vacancy_id (str): ID вакансии для проверки
+            account (str): Логин аккаунта (пустая строка = любой аккаунт)
             
         Returns:
             bool: True если уже откликались, False в противном случае
@@ -75,10 +86,16 @@ class AppliedVacanciesDB:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            cursor.execute(
-                "SELECT 1 FROM applied_vacancies WHERE vacancy_id = ?", 
-                (vacancy_id,)
-            )
+            if account:
+                cursor.execute(
+                    "SELECT 1 FROM applied_vacancies WHERE vacancy_id = ? AND account = ?",
+                    (vacancy_id, account)
+                )
+            else:
+                cursor.execute(
+                    "SELECT 1 FROM applied_vacancies WHERE vacancy_id = ?",
+                    (vacancy_id,)
+                )
             
             result = cursor.fetchone() is not None
             conn.close()
@@ -89,27 +106,28 @@ class AppliedVacanciesDB:
             self.logger.error(f"Ошибка проверки отклика на вакансию: {e}")
             return False
             
-    def add_applied(self, vacancy_id: str, vacancy_url: str = ""):
+    def add_applied(self, vacancy_id: str, vacancy_url: str = "", account: str = ""):
         """
         Добавление вакансии в список отвеченных
         
         Args:
             vacancy_id (str): ID вакансии
             vacancy_url (str): URL вакансии (опционально)
+            account (str): Логин аккаунта (опционально)
         """
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
             cursor.execute(
-                "INSERT OR IGNORE INTO applied_vacancies (vacancy_id, vacancy_url) VALUES (?, ?)",
-                (vacancy_id, vacancy_url)
+                "INSERT OR IGNORE INTO applied_vacancies (vacancy_id, account, vacancy_url) VALUES (?, ?, ?)",
+                (vacancy_id, account, vacancy_url)
             )
             
             conn.commit()
             conn.close()
             
-            self.logger.info(f"Вакансия {vacancy_id} добавлена в список отвеченных")
+            self.logger.info(f"Вакансия {vacancy_id} добавлена в список отвеченных (аккаунт: {account or 'без аккаунта'})")
             
         except Exception as e:
             self.logger.error(f"Ошибка добавления отвеченной вакансии: {e}")

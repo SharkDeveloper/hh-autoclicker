@@ -2,9 +2,10 @@
 Командный интерфейс для HH Auto Apply
 """
 import argparse
+import json
 import logging
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, List
 from src.core.application import HHAutoApply
 from src.core.config_manager import ConfigManager
 from src.utils.logger import get_application_logger
@@ -95,6 +96,11 @@ class CLIInterface:
         )
 
         parser.add_argument(
+            '--accounts',
+            help='Путь к JSON-файлу с несколькими аккаунтами (например: config/accounts.json)'
+        )
+
+        parser.add_argument(
             '--dry-run',
             action='store_true',
             help='Выполнить пробный запуск без реальных откликов'
@@ -157,39 +163,72 @@ class CLIInterface:
             criteria['experience'] = args.experience
         return criteria
 
+    def _load_accounts(self, accounts_path: str) -> List[Dict]:
+        """Загрузка и фильтрация активных аккаунтов из JSON-файла"""
+        try:
+            with open(accounts_path, encoding="utf-8") as f:
+                accounts = json.load(f)
+            enabled = [a for a in accounts if a.get("enabled", True)]
+            self.logger.info(f"Загружено {len(enabled)} активных аккаунтов из {accounts_path}")
+            return enabled
+        except FileNotFoundError:
+            self.logger.error(f"Файл аккаунтов не найден: {accounts_path}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Ошибка разбора файла аккаунтов: {e}")
+            sys.exit(1)
+
     def _run_auto_mode(self, args):
         """
         Запуск в автоматическом режиме:
-        браузер → вход → поиск → отклики
+        браузер → вход → поиск → отклики.
+        Если задан --accounts — последовательно обходит все аккаунты.
 
         Args:
             args: Разобранные аргументы
         """
         self.logger.info("Запуск в автоматическом режиме")
-
-        # Критерии поиска из аргументов (переопределяют конфиг)
         criteria = self._build_criteria(args)
-        self.logger.info(f"Критерии поиска: {criteria if criteria else '(из конфига)'}")
 
-        app = HHAutoApply(args.config)
-
-        # Если критерии переданы через CLI — используем их, иначе из конфига
-        results = app.run(
-            mode='auto',
-            search_criteria=criteria if criteria else None,
-            dry_run=args.dry_run
-        )
-
-        self.logger.info(
-            f"Результаты: успешно — {results.get('success', 0)}, "
-            f"ошибок — {results.get('failed', 0)}"
-        )
-
-        if args.monitor:
-            self._monitor_status(app)
-
-        if args.export:
-            self._export_results(results, args.export)
+        if args.accounts:
+            # Режим нескольких аккаунтов
+            accounts = self._load_accounts(args.accounts)
+            total = {"success": 0, "failed": 0}
+            for i, account in enumerate(accounts, 1):
+                name = account.get("name") or account.get("username", "?")
+                self.logger.info(f"══ Аккаунт {i}/{len(accounts)}: {name} ══")
+                app = HHAutoApply(args.config)
+                results = app.run(
+                    mode='auto',
+                    search_criteria=criteria if criteria else None,
+                    dry_run=args.dry_run,
+                    account_override=account,
+                )
+                total["success"] += results.get("success", 0)
+                total["failed"] += results.get("failed", 0)
+            self.logger.info(
+                f"Все аккаунты завершены: успешно — {total['success']}, "
+                f"ошибок — {total['failed']}"
+            )
+            if args.export:
+                self._export_results(total, args.export)
+        else:
+            # Одиночный аккаунт (прежнее поведение)
+            self.logger.info(f"Критерии поиска: {criteria if criteria else '(из конфига)'}")
+            app = HHAutoApply(args.config)
+            results = app.run(
+                mode='auto',
+                search_criteria=criteria if criteria else None,
+                dry_run=args.dry_run,
+            )
+            self.logger.info(
+                f"Результаты: успешно — {results.get('success', 0)}, "
+                f"ошибок — {results.get('failed', 0)}"
+            )
+            if args.monitor:
+                self._monitor_status(app)
+            if args.export:
+                self._export_results(results, args.export)
 
     def _run_manual_mode(self, args):
         """

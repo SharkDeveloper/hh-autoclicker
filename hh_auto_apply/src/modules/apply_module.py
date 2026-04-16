@@ -25,11 +25,16 @@ class ApplyModule:
         self.session = session_manager
         self.logger = logging.getLogger(__name__)
         self.applied_db = AppliedVacanciesDB()
+        self._account = ""  # Текущий аккаунт (устанавливается через set_account)
 
     @property
     def driver(self):
         """Динамическое получение актуального драйвера"""
         return self.session.driver
+
+    def set_account(self, account: str):
+        """Установить текущий аккаунт для разделения истории откликов"""
+        self._account = account
 
     def apply_to_vacancy(self, vacancy_url: str, cover_letter: str = "",
                          dry_run: bool = False) -> bool:
@@ -50,9 +55,9 @@ class ApplyModule:
             # Извлечение ID вакансии из URL
             vacancy_id = self._extract_vacancy_id(vacancy_url)
 
-            # Проверка, не откликались ли уже
-            if self.applied_db.is_applied(vacancy_id):
-                self.logger.info(f"Уже откликались на вакансию {vacancy_id}, пропускаем")
+            # Проверка, не откликались ли уже (с учётом аккаунта)
+            if self.applied_db.is_applied(vacancy_id, account=self._account):
+                self.logger.info(f"[{self._account or 'default'}] Уже откликались на {vacancy_id}, пропускаем")
                 return True
 
             if dry_run:
@@ -133,8 +138,8 @@ class ApplyModule:
             time.sleep(3)
 
             # Сохранение в базе данных
-            self.applied_db.add_applied(vacancy_id, vacancy_url)
-            self.logger.info(f"Вакансия {vacancy_id} добавлена в список отвеченных")
+            self.applied_db.add_applied(vacancy_id, vacancy_url, account=self._account)
+            self.logger.info(f"Вакансия {vacancy_id} добавлена в список отвеченных (аккаунт: {self._account or 'default'})")
             return True
 
         except Exception as e:

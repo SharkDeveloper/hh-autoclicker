@@ -34,7 +34,8 @@ class HHAutoApply:
         self.logger.info("Приложение HH Auto Apply инициализировано")
 
     def run(self, mode: str = "auto", search_criteria: Dict[str, Any] = None,
-            dry_run: bool = False) -> Dict[str, Any]:
+            dry_run: bool = False,
+            account_override: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Запуск приложения в заданном режиме
 
@@ -42,35 +43,50 @@ class HHAutoApply:
             mode (str): Режим работы ('auto', 'manual', 'recommendations')
             search_criteria (dict): Параметры поиска вакансий
             dry_run (bool): Если True — симуляция без реальных откликов
+            account_override (dict): Настройки аккаунта (переопределяют конфиг).
+                Поддерживаемые ключи: username, password, resume_id,
+                cover_letter, search_filters
 
         Returns:
             dict: Результаты работы
         """
         results = {'success': 0, 'failed': 0, 'errors': []}
+        acc = account_override or {}
 
         try:
             # 1. Создаём браузер
             self.logger.info("Запуск браузера...")
             self.session.create_driver()
 
-            # 2. Вход в аккаунт
+            # 2. Учётные данные (приоритет: account_override > config)
             credentials = self.config.get_credentials()
+            if acc.get('username'):
+                credentials['username'] = acc['username']
+            if acc.get('password'):
+                credentials['password'] = acc['password']
+
             if not credentials.get('username') or not credentials.get('password'):
-                self.logger.error("Логин и пароль не заданы в конфигурации!")
+                self.logger.error("Логин и пароль не заданы!")
                 return results
 
-            self.logger.info(f"Вход в аккаунт: {credentials.get('username')}")
+            self.logger.info(f"Вход в аккаунт: {credentials['username']}")
             if not self.auth_module.login(credentials):
                 self.logger.error("Не удалось войти в аккаунт. Завершение работы.")
                 return results
 
-            # 3. Получение параметров из конфига, если не переданы явно
+            # Сообщаем модулю откликов, с какого аккаунта работаем
+            self.apply_module.set_account(credentials['username'])
+
+            # 3. Параметры поиска (приоритет: явные args > account_override > config)
             if search_criteria is None:
-                search_criteria = self.config.get_search_filters()
+                if acc.get('search_filters'):
+                    search_criteria = acc['search_filters']
+                else:
+                    search_criteria = self.config.get_search_filters()
 
             app_settings = self.config.get_application_settings()
             rate_limit = app_settings.get('rate_limit', 20)
-            cover_letter = app_settings.get('cover_letter', '')
+            cover_letter = acc.get('cover_letter') or app_settings.get('cover_letter', '')
 
             # 4. Поиск вакансий
             if mode == 'recommendations':
@@ -95,7 +111,7 @@ class HHAutoApply:
             )
 
             self.logger.info(
-                f"Итог: успешно — {results['success']}, "
+                f"Итог [{credentials['username']}]: успешно — {results['success']}, "
                 f"ошибок — {results['failed']}"
             )
 
