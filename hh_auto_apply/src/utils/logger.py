@@ -69,15 +69,18 @@ def setup_logger(
 
 def get_application_logger() -> logging.Logger:
     """
-    Получение главного логгера приложения
+    Получение главного логгера приложения.
+    Возвращает root-логгер, который настраивается в main.py.
     
     Returns:
         logging.Logger: Логгер приложения
     """
-    return setup_logger(
-        'hh_auto_apply',
-        'logs/hh_auto_apply.log'
-    )
+    # Если root-логгер уже настроен (через main.py) — используем именованный дочерний
+    root = logging.getLogger()
+    if root.handlers:
+        return logging.getLogger('hh_auto_apply')
+    # Fallback: настраиваем логгер сами
+    return setup_logger('hh_auto_apply', 'logs/hh_auto_apply.log')
 
 
 def get_module_logger(module_name: str) -> logging.Logger:
