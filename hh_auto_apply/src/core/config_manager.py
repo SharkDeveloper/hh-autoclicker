@@ -3,6 +3,7 @@
 """
 import json
 import logging
+import os
 from typing import Dict, Any
 
 
@@ -66,12 +67,17 @@ class ConfigManager:
         
     def get_credentials(self) -> Dict[str, str]:
         """
-        Получение учетных данных пользователя
+        Получение учётных данных пользователя.
+        Env-переменные HH_USERNAME и HH_PASSWORD имеют приоритет над конфигом.
         
         Returns:
-            dict: Учетные данные пользователя
+            dict: Учётные данные пользователя
         """
-        return self.config.get('credentials', {})
+        creds = self.config.get('credentials', {})
+        return {
+            'username': os.environ.get('HH_USERNAME') or creds.get('username', ''),
+            'password': os.environ.get('HH_PASSWORD') or creds.get('password', ''),
+        }
         
     def get_application_settings(self) -> Dict[str, Any]:
         """

@@ -1,0 +1,48 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Виртуальное окружение
+venv/
+.venv/
+env/
+
+# Python-кеш
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Тестовые артефакты
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Данные (монтируются как volumes)
+data/*.db
+session.pkl
+
+# Логи (монтируются как volumes)
+logs/*.log
+
+# Debug-файлы
+*.html
+*_debug*
+
+# Временные файлы
+*.tmp
+*.swp
+*.swo
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml

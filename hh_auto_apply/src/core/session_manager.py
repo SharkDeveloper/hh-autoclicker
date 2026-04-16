@@ -13,36 +13,69 @@ from src.core.config_manager import ConfigManager
 
 
 def _find_chromium_binary() -> str:
-    """Поиск исполняемого файла Chromium в системе"""
-    try:
-        result = subprocess.run(["which", "chromium"], capture_output=True, text=True)
-        path = result.stdout.strip()
-        if path:
-            return path
-    except Exception:
-        pass
-    # Фолбэк на стандартные пути NixOS
+    """
+    Поиск исполняемого файла Chromium в системе.
+    Приоритет: env CHROMIUM_BINARY → which chromium → стандартные пути.
+    """
+    import os
+    # 1. Env-переменная (Docker/CI)
+    env_path = os.environ.get("CHROMIUM_BINARY", "")
+    if env_path and os.path.exists(env_path):
+        return env_path
+
+    # 2. which chromium
+    for cmd in ["chromium", "chromium-browser", "google-chrome"]:
+        try:
+            result = subprocess.run(["which", cmd], capture_output=True, text=True)
+            path = result.stdout.strip()
+            if path and os.path.exists(path):
+                return path
+        except Exception:
+            pass
+
+    # 3. Фолбэк на стандартные пути
     fallback_paths = [
-        "/run/current-system/sw/bin/chromium",
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/run/current-system/sw/bin/chromium",
     ]
     for p in fallback_paths:
-        import os
         if os.path.exists(p):
             return p
+
     return "chromium"
 
 
 def _find_chromedriver_binary() -> str:
-    """Поиск исполняемого файла chromedriver в системе"""
+    """
+    Поиск исполняемого файла chromedriver в системе.
+    Приоритет: env CHROMEDRIVER_BINARY → which chromedriver → стандартные пути.
+    """
+    import os
+    # 1. Env-переменная (Docker/CI)
+    env_path = os.environ.get("CHROMEDRIVER_BINARY", "")
+    if env_path and os.path.exists(env_path):
+        return env_path
+
+    # 2. which chromedriver
     try:
         result = subprocess.run(["which", "chromedriver"], capture_output=True, text=True)
         path = result.stdout.strip()
-        if path:
+        if path and os.path.exists(path):
             return path
     except Exception:
         pass
+
+    # 3. Стандартные пути
+    fallback_paths = [
+        "/usr/bin/chromedriver",
+        "/usr/lib/chromium/chromedriver",
+    ]
+    for p in fallback_paths:
+        if os.path.exists(p):
+            return p
+
     return "chromedriver"
 
 

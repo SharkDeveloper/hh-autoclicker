@@ -267,6 +267,104 @@ python3 main.py --dry-run -v
 
 ---
 
+## Docker (рекомендуемый способ развёртывания)
+
+Проект поставляется с многостадийным образом и двумя профилями: **test** (проверки) и **prod** (продакшн).
+
+### Подготовка
+
+```bash
+# Копируем шаблон переменных окружения
+cp config/.env.example config/.env
+# Открываем и заполняем email / пароль
+nano config/.env
+```
+
+Содержимое `config/.env`:
+```env
+HH_USERNAME=your_email@gmail.com
+HH_PASSWORD=your_password
+SCHEDULER_INTERVAL=360    # каждые 6 часов
+SCHEDULER_MODE=auto
+```
+
+---
+
+### Стадия TEST — запуск проверок
+
+Выполняется автоматически при каждом деплое или вручную:
+
+```bash
+docker compose --profile test up --build
+```
+
+**Что происходит внутри:**
+1. Проверяет наличие и совместимость Chromium + chromedriver
+2. Запускает **50 юнит-тестов** (без браузера, без учётных данных)
+3. Если заданы `HH_USERNAME` / `HH_PASSWORD` — запускает **интеграционный dry-run** (реальный вход + поиск вакансий, без откликов)
+
+Если все проверки прошли — в консоли появится:
+```
+✓ Все проверки пройдены — образ готов к продакшену
+```
+
+---
+
+### Стадия PROD — запуск планировщика
+
+```bash
+# Фоновый запуск с автоперезапуском
+docker compose --profile prod up -d --build
+
+# Следить за логами
+docker compose logs -f prod
+
+# Остановить
+docker compose --profile prod down
+```
+
+**Планировщик** автоматически:
+- Загружает аккаунты из `config/accounts.json`
+- Запускает цикл откликов по каждому аккаунту
+- Ждёт `SCHEDULER_INTERVAL` минут (по умолчанию 360 = 6 часов)
+- Повторяет бесконечно, перезапускается при падении
+
+---
+
+### Полный цикл: сначала тест, потом прод
+
+```bash
+# 1. Сборка и тестирование
+docker compose --profile test up --build
+
+# 2. Если тесты прошли — деплой в продакшн
+docker compose --profile prod up -d --build
+```
+
+---
+
+### Полезные команды Docker
+
+```bash
+# Статус контейнеров
+docker compose ps
+
+# Логи планировщика (последние 50 строк)
+docker compose logs --tail=50 prod
+
+# Войти в контейнер (отладка)
+docker compose exec prod bash
+
+# Просмотреть историю откликов в контейнере
+docker compose exec prod sqlite3 data/applied_vacancies.db \
+  "SELECT account, vacancy_url, applied_date FROM applied_vacancies ORDER BY applied_date DESC LIMIT 20;"
+
+# Удалить контейнеры и образы (полная очистка)
+docker compose down --rmi all
+```
+
+---
+
 ## Планировщик (запуск на сервере)
 
 `scheduler.py` запускает все аккаунты из `accounts.json` по расписанию:
