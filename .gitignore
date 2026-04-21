@@ -1,12 +1,10 @@
+```
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -23,43 +21,43 @@ wheels/
 .installed.cfg
 *.egg
 
-# Конфигурация с паролями
-config.json
+# Virtual environments
+venv/
+ENV/
+env.bak/
+.venv/
 
-# Логи
+# Django
 *.log
-
-# Откликнутые вакансии
-applied_vacancies.txt
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Selenium
-chromedriver
-geckodriver
+# Environment variables
+.env
+.env.local
+*.env.*
 
-# Debug HTML files
-debug_*.html
-*.htm
+# Coverage
+.coverage
+htmlcov/
+.coverage.*
 
-# WebDriver cache
-.wdm/
+# Celery
+celerybeat-schedule
+celerybeat.pid
 
-# License violation reports
-license_violations_report_*.json
-
-# Документация для владельца проекта (не нужна пользователям)
-docs/GITHUB_LICENSE_SETUP.md
-docs/LICENSE_MONITORING.md
-docs/LICENSE_VIOLATION_TEMPLATE.md
-docs/README.md
-
+# Temporary files
+*.tmp
+*~
+```
