@@ -96,8 +96,8 @@ def main():
                         help="Путь к основному конфигу (по умолчанию: config/default.json)")
     parser.add_argument("--mode", choices=["auto", "recommendations"], default="auto",
                         help="Режим работы (по умолчанию: auto)")
-    parser.add_argument("--interval", type=int, default=360,
-                        help="Интервал запуска в минутах (по умолчанию: 360 = 6 часов)")
+    parser.add_argument("--interval", type=int, default=36,
+                        help="Интервал запуска в минутах (по умолчанию: 36 = 6 часов)")
     parser.add_argument("--once", action="store_true",
                         help="Запустить один раз и выйти")
     parser.add_argument("--dry-run", action="store_true",

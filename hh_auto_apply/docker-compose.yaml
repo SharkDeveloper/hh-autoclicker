@@ -57,9 +57,9 @@ services:
     environment:
       HH_USERNAME: ${HH_USERNAME:-}
       HH_PASSWORD: ${HH_PASSWORD:-}
-      SCHEDULER_INTERVAL: ${SCHEDULER_INTERVAL:-360}
+      SCHEDULER_INTERVAL: ${SCHEDULER_INTERVAL:-36}
       SCHEDULER_MODE: ${SCHEDULER_MODE:-auto}
-    command: ["--interval", "${SCHEDULER_INTERVAL:-360}", "--mode", "${SCHEDULER_MODE:-auto}"]
+    command: ["--interval", "${SCHEDULER_INTERVAL:-36}", "--mode", "${SCHEDULER_MODE:-auto}"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c",

@@ -86,4 +86,4 @@ LABEL stage="prod"
 
 # Запускаем планировщик
 ENTRYPOINT ["python3", "scheduler.py"]
-CMD ["--interval", "360"]
+CMD ["--interval", "36s"]

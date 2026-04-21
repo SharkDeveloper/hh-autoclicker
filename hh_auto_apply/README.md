@@ -284,7 +284,7 @@ nano config/.env
 ```env
 HH_USERNAME=your_email@gmail.com
 HH_PASSWORD=your_password
-SCHEDULER_INTERVAL=360    # каждые 6 часов
+SCHEDULER_INTERVAL=36    # каждые 6 часов
 SCHEDULER_MODE=auto
 ```
 
@@ -326,7 +326,7 @@ docker compose --profile prod down
 **Планировщик** автоматически:
 - Загружает аккаунты из `config/accounts.json`
 - Запускает цикл откликов по каждому аккаунту
-- Ждёт `SCHEDULER_INTERVAL` минут (по умолчанию 360 = 6 часов)
+- Ждёт `SCHEDULER_INTERVAL` минут (по умолчанию 36 = 6 часов)
 - Повторяет бесконечно, перезапускается при падении
 
 ---
@@ -374,7 +374,7 @@ docker compose down --rmi all
 python3 scheduler.py --once
 
 # Непрерывно каждые 6 часов
-python3 scheduler.py --interval 360
+python3 scheduler.py --interval 36
 
 # Каждые 2 часа, симуляция
 python3 scheduler.py --interval 120 --dry-run
@@ -437,7 +437,7 @@ After=network.target
 Type=simple
 User=your_username
 WorkingDirectory=/home/your_username/hh-auto-apply/hh_auto_apply
-ExecStart=/home/your_username/hh-auto-apply/hh_auto_apply/venv/bin/python3 scheduler.py --interval 360
+ExecStart=/home/your_username/hh-auto-apply/hh_auto_apply/venv/bin/python3 scheduler.py --interval 36
 Restart=always
 RestartSec=60
 
@@ -464,7 +464,7 @@ screen -S hh-bot
 
 cd hh-auto-apply/hh_auto_apply
 source venv/bin/activate
-python3 scheduler.py --interval 360
+python3 scheduler.py --interval 36
 
 # Отключиться (бот продолжает работать): Ctrl+A, затем D
 # Вернуться к сеансу: screen -r hh-bot
