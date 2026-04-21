@@ -1,10 +1,12 @@
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, redirect
+from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 
 from accounts.models import HHAccount, RunLog
-from core.tasks import run_auto_apply_task, run_all_enabled_accounts
+from accounts.forms import RegisterForm
+from core.tasks import run_auto_apply_task
 
 
 @login_required
@@ -24,7 +26,7 @@ def dashboard(request):
         'recent_logs': recent_logs,
     }
     
-    return render(request, 'core/dashboard.html', context)
+    return render(request, 'dashboard.html', context)
 
 
 @login_required
@@ -53,3 +55,45 @@ def run_auto_apply_all(request):
     messages.success(request, f"{mode} Запущено {len(task_ids)} задач автоотклика")
     
     return redirect('dashboard')
+
+
+def register(request):
+    """Регистрация нового пользователя"""
+    if request.method == 'POST':
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            messages.success(request, "Регистрация успешна! Добро пожаловать.")
+            return redirect('dashboard')
+    else:
+        form = RegisterForm()
+    
+    return render(request, 'register.html', {'form': form})
+
+
+def login_view(request):
+    """Вход в систему"""
+    from django.contrib.auth import authenticate
+    
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            login(request, user)
+            messages.success(request, "Вы успешно вошли в систему")
+            return redirect('dashboard')
+        else:
+            messages.error(request, "Неверное имя пользователя или пароль")
+    
+    return render(request, 'login.html')
+
+
+@login_required
+def logout_view(request):
+    """Выход из системы"""
+    logout(request)
+    messages.info(request, "Вы вышли из системы")
+    return redirect('login')

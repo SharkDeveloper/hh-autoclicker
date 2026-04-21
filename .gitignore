@@ -21,11 +21,12 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# Virtual Environment
 venv/
+env/
 ENV/
-env.bak/
 .venv/
+.env/
 
 # Django
 *.log
@@ -43,21 +44,6 @@ db.sqlite3-journal
 .DS_Store
 Thumbs.db
 
-# Environment variables
-.env
-.env.local
-*.env.*
-
-# Coverage
-.coverage
-htmlcov/
-.coverage.*
-
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# Temporary files
-*.tmp
-*~
+# Docker
+.dockerenv
 ```

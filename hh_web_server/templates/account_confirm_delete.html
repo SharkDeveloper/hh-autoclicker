@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block title %}Удаление аккаунта{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">Подтверждение удаления</h5>
+            </div>
+            <div class="card-body">
+                <p>Вы уверены, что хотите удалить аккаунт <strong>"{{ account.name }}"</strong>?</p>
+                <p class="text-muted">Это действие нельзя отменить. Все связанные данные будут удалены.</p>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-danger">Удалить</button>
+                        <a href="{% url 'account_list' %}" class="btn btn-secondary">Отмена</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
