@@ -1,0 +1,12 @@
+Уважаемый(ая) [HIRING_MANAGER_NAME или "Руководитель"],
+
+Обращаюсь к Вам с сильным интересом к возможности [POSITION] в компании [COMPANY]. Как преданный профессионал с [YEARS_OF_EXPERIENCE] годами опыта в [RELEVANT_FIELD], я стремлюсь принести свои навыки в [SKILL_1], [SKILL_2] и [SKILL_3] в Вашу организацию.
+
+Мой подход к [RELEVANT_FIELD] основан на [CORE_PHILOSOPHY_OR_APPROACH], что позволило мне [SPECIFIC_RESULT_OR_ACHIEVEMENT]. В [PREVIOUS_COMPANY] я возглавлял(а) [PROJECT_OR_INITIATIVE], что привело к [MEASURABLE_OUTCOME], демонстрируя мою способность [RELEVANT_COMPETENCY].
+
+То, что больше всего меня воодушевляет в [COMPANY], это [SPECIFIC_ASPECT_OF_COMPANY]. Меня особенно привлекает [COMPANY_VALUE_OR_INITIATIVE], и я считаю, что мой опыт с [RELEVANT_EXPERIENCE] позволит мне немедленно внести вклад в [SPECIFIC_TEAM_OR_PROJECT].
+
+Я буду рад(а) обсудить, как мой опыт в [RELEVANT_FIELD] и страсть к [RELEVANT_INDUSTRY_ASPECT] могут способствовать дальнейшему успеху [COMPANY]. Я доступен(на) по телефону [PHONE_NUMBER] или по электронной почте [EMAIL_ADDRESS] и с нетерпением жду связи.
+
+С уважением,
+[YOUR_NAME]
