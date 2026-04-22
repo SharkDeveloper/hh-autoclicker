@@ -3,9 +3,10 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout
 from django.contrib import messages
 from django.utils import timezone
+import json
 
 from accounts.models import HHAccount, RunLog
-from accounts.forms import RegisterForm, HHAccountForm
+from accounts.forms import RegisterForm, HHAccountForm, SearchFiltersForm
 from core.tasks import run_auto_apply_task, run_all_enabled_accounts
 
 
@@ -21,16 +22,28 @@ def account_create(request):
     """Создание нового аккаунта HH.ru"""
     if request.method == 'POST':
         form = HHAccountForm(request.POST)
-        if form.is_valid():
+        filters_form = SearchFiltersForm(request.POST)
+        
+        if form.is_valid() and filters_form.is_valid():
             account = form.save(commit=False)
             account.user = request.user
+            
+            # Сохраняем фильтры в JSON формате
+            search_filters = filters_form.to_json()
+            account.search_filters = search_filters
+            
             account.save()
             messages.success(request, f"Аккаунт '{account.name}' успешно создан")
             return redirect('account_list')
     else:
         form = HHAccountForm()
+        filters_form = SearchFiltersForm()
     
-    return render(request, 'account_form.html', {'form': form, 'title': 'Добавить аккаунт'})
+    return render(request, 'account_form.html', {
+        'form': form, 
+        'filters_form': filters_form,
+        'title': 'Добавить аккаунт'
+    })
 
 
 @login_required
@@ -40,14 +53,29 @@ def account_edit(request, pk):
     
     if request.method == 'POST':
         form = HHAccountForm(request.POST, instance=account)
-        if form.is_valid():
-            form.save()
+        filters_form = SearchFiltersForm(request.POST)
+        
+        if form.is_valid() and filters_form.is_valid():
+            account = form.save(commit=False)
+            
+            # Сохраняем фильтры в JSON формате
+            search_filters = filters_form.to_json()
+            account.search_filters = search_filters
+            
+            account.save()
             messages.success(request, f"Аккаунт '{account.name}' успешно обновлён")
             return redirect('account_list')
     else:
         form = HHAccountForm(instance=account)
+        # Инициализируем форму фильтров существующими данными
+        initial_filters = account.search_filters if account.search_filters else {}
+        filters_form = SearchFiltersForm(initial_filters=initial_filters)
     
-    return render(request, 'account_form.html', {'form': form, 'title': f'Редактировать: {account.name}'})
+    return render(request, 'account_form.html', {
+        'form': form, 
+        'filters_form': filters_form,
+        'title': f'Редактировать: {account.name}'
+    })
 
 
 @login_required

@@ -38,13 +38,32 @@ def run_auto_apply_task(self, account_id: int, dry_run: bool = False):
         
         from src.core.application import HHAutoApply
         
+        # Определяем режим поиска и параметры
+        search_filters = account.search_filters or {}
+        search_mode = search_filters.get('search_mode', 'manual')
+        
+        # Определяем режим для приложения
+        if search_mode == 'recommendations':
+            app_mode = 'recommendations'
+            search_criteria = None
+        elif search_mode == 'auto' and search_filters.get('vacancy_url'):
+            # Авто-подбор по вакансии: извлекаем ключевые слова из URL или используем рекомендации
+            app_mode = 'recommendations'  # Пока используем рекомендации как fallback
+            search_criteria = None
+        else:
+            # Ручной режим с фильтрами
+            app_mode = 'auto'
+            # Преобразуем фильтры в формат, понятный search_module
+            search_criteria = {k: v for k, v in search_filters.items() 
+                             if k not in ['search_mode', 'vacancy_url']}
+        
         # Формируем конфигурацию для запуска
         account_override = {
             'username': account.username,
             'password': account.password,
             'resume_id': account.resume_id,
             'cover_letter': account.cover_letter,
-            'search_filters': account.search_filters,
+            'search_filters': search_criteria,
         }
         
         # Используем временный конфиг или дефолтный
@@ -52,8 +71,8 @@ def run_auto_apply_task(self, account_id: int, dry_run: bool = False):
         
         app = HHAutoApply(config_path)
         results = app.run(
-            mode='auto',
-            search_criteria=account.search_filters if account.search_filters else None,
+            mode=app_mode,
+            search_criteria=search_criteria,
             dry_run=dry_run,
             account_override=account_override,
         )

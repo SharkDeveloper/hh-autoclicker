@@ -2,91 +2,325 @@
 
 {% block title %}{{ title }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    .filter-section {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .filter-section h5 {
+        color: #495057;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #dee2e6;
+        padding-bottom: 10px;
+    }
+    .mode-selector {
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .mode-option {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 6px;
+        transition: background-color 0.2s;
+    }
+    .mode-option:hover {
+        background-color: #f8f9fa;
+    }
+    .mode-option input[type="radio"] {
+        margin-right: 10px;
+    }
+    .vacancy-url-field {
+        display: none;
+        margin-top: 15px;
+    }
+    .help-text {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+    .checkbox-group {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+    }
+    .checkbox-item {
+        display: flex;
+        align-items: center;
+    }
+    .checkbox-item input {
+        margin-right: 8px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8 col-lg-6">
+    <div class="col-md-10 col-lg-8">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">{{ title }}</h5>
             </div>
             <div class="card-body">
-                <form method="post">
+                <form method="post" id="accountForm">
                     {% csrf_token %}
                     
-                    <div class="mb-3">
-                        <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
-                        {{ form.name }}
-                        {% if form.name.errors %}
-                            <div class="text-danger small">{{ form.name.errors }}</div>
-                        {% endif %}
+                    <!-- Основная информация -->
+                    <div class="filter-section">
+                        <h5><i class="bi bi-person-circle"></i> Основная информация</h5>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+                            {{ form.name|add_class:"form-control" }}
+                            {% if form.name.errors %}
+                                <div class="text-danger small">{{ form.name.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">{{ form.username.label }}</label>
+                                {{ form.username|add_class:"form-control" }}
+                                {% if form.username.errors %}
+                                    <div class="text-danger small">{{ form.username.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="{{ form.password.id_for_label }}" class="form-label">{{ form.password.label }}</label>
+                                {{ form.password|add_class:"form-control" }}
+                                {% if form.password.errors %}
+                                    <div class="text-danger small">{{ form.password.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.resume_id.id_for_label }}" class="form-label">{{ form.resume_id.label }}</label>
+                            {{ form.resume_id|add_class:"form-control" }}
+                            <small class="help-text">ID резюме на HH.ru (можно найти в URL вашего резюме)</small>
+                            {% if form.resume_id.errors %}
+                                <div class="text-danger small">{{ form.resume_id.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.cover_letter.id_for_label }}" class="form-label">{{ form.cover_letter.label }}</label>
+                            {{ form.cover_letter|add_class:"form-control" }}
+                            <small class="help-text">Стандартное сопроводительное письмо для откликов</small>
+                            {% if form.cover_letter.errors %}
+                                <div class="text-danger small">{{ form.cover_letter.errors }}</div>
+                            {% endif %}
+                        </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="{{ form.username.id_for_label }}" class="form-label">{{ form.username.label }}</label>
-                        {{ form.username }}
-                        {% if form.username.errors %}
-                            <div class="text-danger small">{{ form.username.errors }}</div>
-                        {% endif %}
+                    <!-- Настройки поиска -->
+                    <div class="filter-section">
+                        <h5><i class="bi bi-search"></i> Настройки поиска вакансий</h5>
+                        
+                        <!-- Выбор режима поиска -->
+                        <div class="mode-selector">
+                            <label class="form-label fw-bold">Режим поиска:</label>
+                            
+                            <div class="mode-option">
+                                {{ filters_form.search_mode.0 }}
+                                <label for="{{ filters_form.search_mode.id_for_label }}_0" class="form-check-label">
+                                    <strong>По фильтрам</strong>
+                                    <br>
+                                    <small class="text-muted">Использовать указанные ниже параметры для поиска</small>
+                                </label>
+                            </div>
+                            
+                            <div class="mode-option">
+                                {{ filters_form.search_mode.1 }}
+                                <label for="{{ filters_form.search_mode.id_for_label }}_1" class="form-check-label">
+                                    <strong>Авто-подбор по вакансии</strong>
+                                    <br>
+                                    <small class="text-muted">Анализировать конкретную вакансию и подбирать похожие</small>
+                                </label>
+                            </div>
+                            
+                            <div class="mode-option">
+                                {{ filters_form.search_mode.2 }}
+                                <label for="{{ filters_form.search_mode.id_for_label }}_2" class="form-check-label">
+                                    <strong>Рекомендации HH</strong>
+                                    <br>
+                                    <small class="text-muted">Использовать встроенные рекомендации HeadHunter</small>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Поле для URL вакансии (скрыто по умолчанию) -->
+                        <div class="mb-3 vacancy-url-field" id="vacancyUrlField">
+                            <label for="{{ filters_form.vacancy_url.id_for_label }}" class="form-label">{{ filters_form.vacancy_url.label }}</label>
+                            {{ filters_form.vacancy_url|add_class:"form-control" }}
+                            <small class="help-text">Вставьте ссылку на вакансию, на основе которой нужно подбирать похожие</small>
+                            {% if filters_form.vacancy_url.errors %}
+                                <div class="text-danger small">{{ filters_form.vacancy_url.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Фильтры для ручного режима -->
+                        <div id="manualFilters">
+                            <div class="row">
+                                <div class="col-md-8 mb-3">
+                                    <label for="{{ filters_form.text.id_for_label }}" class="form-label">{{ filters_form.text.label }}</label>
+                                    {{ filters_form.text|add_class:"form-control" }}
+                                    <small class="help-text">Ключевые слова для поиска (должность, навыки)</small>
+                                    {% if filters_form.text.errors %}
+                                        <div class="text-danger small">{{ filters_form.text.errors }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="{{ filters_form.area.id_for_label }}" class="form-label">{{ filters_form.area.label }}</label>
+                                    {{ filters_form.area|add_class:"form-control" }}
+                                    <small class="help-text">Город или регион</small>
+                                    {% if filters_form.area.errors %}
+                                        <div class="text-danger small">{{ filters_form.area.errors }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="{{ filters_form.salary.id_for_label }}" class="form-label">{{ filters_form.salary.label }}</label>
+                                    {{ filters_form.salary|add_class:"form-control" }}
+                                    {% if filters_form.salary.errors %}
+                                        <div class="text-danger small">{{ filters_form.salary.errors }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="{{ filters_form.experience.id_for_label }}" class="form-label">{{ filters_form.experience.label }}</label>
+                                    {{ filters_form.experience|add_class:"form-select" }}
+                                    {% if filters_form.experience.errors %}
+                                        <div class="text-danger small">{{ filters_form.experience.errors }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">{{ filters_form.employment.label }}</label>
+                                <div class="checkbox-group">
+                                    {% for checkbox in filters_form.employment %}
+                                    <div class="checkbox-item">
+                                        {{ checkbox.tag }}
+                                        <label for="{{ checkbox.id_for_label }}" class="form-check-label">{{ checkbox.choice_label }}</label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% if filters_form.employment.errors %}
+                                    <div class="text-danger small">{{ filters_form.employment.errors }}</div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">{{ filters_form.schedule.label }}</label>
+                                <div class="checkbox-group">
+                                    {% for checkbox in filters_form.schedule %}
+                                    <div class="checkbox-item">
+                                        {{ checkbox.tag }}
+                                        <label for="{{ checkbox.id_for_label }}" class="form-check-label">{{ checkbox.choice_label }}</label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% if filters_form.schedule.errors %}
+                                    <div class="text-danger small">{{ filters_form.schedule.errors }}</div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="mb-3 form-check">
+                                {{ filters_form.only_with_salary }}
+                                <label class="form-check-label" for="{{ filters_form.only_with_salary.id_for_label }}">{{ filters_form.only_with_salary.label }}</label>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="{{ form.password.id_for_label }}" class="form-label">{{ form.password.label }}</label>
-                        {{ form.password }}
-                        {% if form.password.errors %}
-                            <div class="text-danger small">{{ form.password.errors }}</div>
-                        {% endif %}
+                    <!-- Дополнительные настройки -->
+                    <div class="filter-section">
+                        <h5><i class="bi bi-gear"></i> Дополнительные настройки</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    {{ form.enabled }}
+                                    <label class="form-check-label" for="{{ form.enabled.id_for_label }}">{{ form.enabled.label }}</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check form-switch">
+                                    {{ form.auto_apply }}
+                                    <label class="form-check-label" for="{{ form.auto_apply.id_for_label }}">{{ form.auto_apply.label }}</label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.max_applications_per_day.id_for_label }}" class="form-label">{{ form.max_applications_per_day.label }}</label>
+                            {{ form.max_applications_per_day|add_class:"form-control" }}
+                            <small class="help-text">Максимальное количество откликов в день</small>
+                            {% if form.max_applications_per_day.errors %}
+                                <div class="text-danger small">{{ form.max_applications_per_day.errors }}</div>
+                            {% endif %}
+                        </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="{{ form.resume_id.id_for_label }}" class="form-label">{{ form.resume_id.label }}</label>
-                        {{ form.resume_id }}
-                        {% if form.resume_id.errors %}
-                            <div class="text-danger small">{{ form.resume_id.errors }}</div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="{{ form.cover_letter.id_for_label }}" class="form-label">{{ form.cover_letter.label }}</label>
-                        {{ form.cover_letter }}
-                        {% if form.cover_letter.errors %}
-                            <div class="text-danger small">{{ form.cover_letter.errors }}</div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="{{ form.search_filters.id_for_label }}" class="form-label">{{ form.search_filters.label }}</label>
-                        {{ form.search_filters }}
-                        <small class="form-text text-muted">Укажите в формате JSON, например: {"text": "Python разработчик", "area": {"id": "1"}}</small>
-                        {% if form.search_filters.errors %}
-                            <div class="text-danger small">{{ form.search_filters.errors }}</div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        {{ form.enabled }}
-                        <label class="form-check-label" for="{{ form.enabled.id_for_label }}">{{ form.enabled.label }}</label>
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        {{ form.auto_apply }}
-                        <label class="form-check-label" for="{{ form.auto_apply.id_for_label }}">{{ form.auto_apply.label }}</label>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="{{ form.max_applications_per_day.id_for_label }}" class="form-label">{{ form.max_applications_per_day.label }}</label>
-                        {{ form.max_applications_per_day }}
-                        {% if form.max_applications_per_day.errors %}
-                            <div class="text-danger small">{{ form.max_applications_per_day.errors }}</div>
-                        {% endif %}
-                    </div>
+                    <!-- Скрытое поле для JSON фильтров (для совместимости) -->
+                    {{ form.search_filters }}
                     
                     <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-primary">Сохранить</button>
-                        <a href="{% url 'account_list' %}" class="btn btn-secondary">Отмена</a>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-save"></i> Сохранить
+                        </button>
+                        <a href="{% url 'account_list' %}" class="btn btn-secondary btn-lg">
+                            <i class="bi bi-x-circle"></i> Отмена
+                        </a>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchModeRadios = document.querySelectorAll('input[name="search_mode"]');
+    const manualFilters = document.getElementById('manualFilters');
+    const vacancyUrlField = document.getElementById('vacancyUrlField');
+    
+    function toggleFields() {
+        const selectedMode = document.querySelector('input[name="search_mode"]:checked');
+        if (!selectedMode) return;
+        
+        const mode = selectedMode.value;
+        
+        if (mode === 'auto') {
+            // Режим авто-подбора: показываем поле URL, скрываем фильтры
+            manualFilters.style.display = 'none';
+            vacancyUrlField.style.display = 'block';
+        } else if (mode === 'recommendations') {
+            // Режим рекомендаций: скрываем всё
+            manualFilters.style.display = 'none';
+            vacancyUrlField.style.display = 'none';
+        } else {
+            // Ручной режим: показываем фильтры, скрываем URL
+            manualFilters.style.display = 'block';
+            vacancyUrlField.style.display = 'none';
+        }
+    }
+    
+    // Навешиваем обработчики на радио-кнопки
+    searchModeRadios.forEach(radio => {
+        radio.addEventListener('change', toggleFields);
+    });
+    
+    // Инициализация при загрузке
+    toggleFields();
+});
+</script>
 {% endblock %}
