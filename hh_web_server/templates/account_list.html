@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Мои аккаунты{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Мои аккаунты HH.ru</h1>
+    <a href="{% url 'account_create' %}" class="btn btn-primary">Добавить аккаунт</a>
+</div>
+
+{% if accounts %}
+<div class="row">
+    {% for account in accounts %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">{{ account.name }}</h5>
+                {% if account.enabled %}
+                    <span class="badge bg-success">Активен</span>
+                {% else %}
+                    <span class="badge bg-secondary">Неактивен</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <p><strong>Email:</strong> {{ account.username }}</p>
+                <p><strong>Автоотклик:</strong> 
+                    {% if account.auto_apply %}
+                        <span class="text-success">Включен</span>
+                    {% else %}
+                        <span class="text-muted">Выключен</span>
+                    {% endif %}
+                </p>
+                <p><strong>Лимит в день:</strong> {{ account.max_applications_per_day }}</p>
+                {% if account.last_run %}
+                    <p><strong>Последний запуск:</strong> {{ account.last_run|date:"d.m.Y H:i" }}</p>
+                {% else %}
+                    <p><strong>Последний запуск:</strong> <span class="text-muted">Не запускался</span></p>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <div class="btn-group w-100" role="group">
+                    <form method="post" action="{% url 'account_run' account.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm">Запустить</button>
+                    </form>
+                    <form method="post" action="{% url 'account_run' account.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="dry_run" value="true">
+                        <button type="submit" class="btn btn-warning btn-sm">Тест</button>
+                    </form>
+                    <a href="{% url 'account_edit' account.id %}" class="btn btn-primary btn-sm">Изменить</a>
+                    <a href="{% url 'account_delete' account.id %}" class="btn btn-danger btn-sm">Удалить</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    У вас пока нет аккаунтов. <a href="{% url 'account_create' %}">Добавьте первый аккаунт</a>.
+</div>
+{% endif %}
+{% endblock %}

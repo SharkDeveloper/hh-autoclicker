@@ -1,0 +1,117 @@
+services:
+  # PostgreSQL - база данных
+  db:
+    image: postgres:15-alpine
+    container_name: hh_web_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hh_web}
+      POSTGRES_USER: ${POSTGRES_USER:-hh_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hh_password}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hh_user} -d ${POSTGRES_DB:-hh_web}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - брокер сообщений для Celery
+  redis:
+    image: redis:7-alpine
+    container_name: hh_web_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Django веб-приложение
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hh_web_app
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn --bind 0.0.0.0:8000 hh_web.wsgi:application"
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - ./hh_auto_apply:/app/hh_auto_apply
+    environment:
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      POSTGRES_DB: ${POSTGRES_DB:-hh_web}
+      POSTGRES_USER: ${POSTGRES_USER:-hh_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hh_password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Celery worker для фоновых задач
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hh_web_celery_worker
+    command: celery -A hh_web worker --loglevel=info
+    volumes:
+      - ./hh_auto_apply:/app/hh_auto_apply
+      - media_volume:/app/media
+    environment:
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+      POSTGRES_DB: ${POSTGRES_DB:-hh_web}
+      POSTGRES_USER: ${POSTGRES_USER:-hh_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hh_password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      DISPLAY: :99
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+  # Celery beat для планировщика задач (опционально)
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hh_web_celery_beat
+    command: celery -A hh_web beat --loglevel=info
+    environment:
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-in-production}
+      POSTGRES_DB: ${POSTGRES_DB:-hh_web}
+      POSTGRES_USER: ${POSTGRES_USER:-hh_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hh_password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:

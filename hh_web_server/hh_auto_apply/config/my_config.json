@@ -1,0 +1,35 @@
+{
+  "credentials": {
+    "username": "test@example.com",
+    "password": "password123"
+  },
+  "application": {
+    "headless": true,
+    "rate_limit": 20,
+    "delay_range": [1, 3],
+    "dry_run": false
+  },
+  "search_filters": {
+    "text": "Python разработчик",
+    "area": "1",
+    "salary": 100000,
+    "experience": "between3And6",
+    "employment": ["full"],
+    "schedule": ["fullDay"]
+  },
+  "resume": {
+    "default_id": "d5113943ff09ef02170039ed1f597879424a41",
+    "auto_update": true
+  },
+  "monitoring": {
+    "check_status": true,
+    "export_report": true,
+    "report_file": "report.txt"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/hh_auto_apply.log",
+    "max_size": 10485760,
+    "backup_count": 5
+  }
+}

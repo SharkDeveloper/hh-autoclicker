@@ -1,0 +1,75 @@
+# ============================================================
+# HH Auto Apply — Docker Compose
+#
+# Профили:
+#   test  — юнит-тесты + dry-run проверка
+#   prod  — планировщик откликов (продакшн)
+#
+# Использование:
+#   Тесты:    docker compose --profile test  up --build
+#   Продакшн: docker compose --profile prod  up -d --build
+# ============================================================
+
+x-common: &common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - path: config/.env
+      required: false       # файл необязателен — можно передать env иначе
+  volumes:
+    - ./config:/app/config  # конфиги монтируются снаружи
+    - ./data:/app/data       # БД откликов
+    - ./logs:/app/logs       # логи
+
+services:
+
+  # ── TEST ──────────────────────────────────────────────────
+  test:
+    <<: *common
+    profiles: [test]
+    container_name: hh-test
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test          # собираем стадию test
+    environment:
+      # Учётные данные для интеграционного dry-run (опционально)
+      HH_USERNAME: ${HH_USERNAME:-}
+      HH_PASSWORD: ${HH_PASSWORD:-}
+      HH_TEST_KEYWORDS: ${HH_TEST_KEYWORDS:-Python}
+      HH_TEST_AREA: ${HH_TEST_AREA:-1}
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./coverage.xml:/app/coverage.xml   # отчёт покрытия
+
+  # ── PROD ──────────────────────────────────────────────────
+  prod:
+    <<: *common
+    profiles: [prod]
+    container_name: hh-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod          # собираем стадию prod
+    environment:
+      HH_USERNAME: ${HH_USERNAME:-}
+      HH_PASSWORD: ${HH_PASSWORD:-}
+      SCHEDULER_INTERVAL: ${SCHEDULER_INTERVAL:-36}
+      SCHEDULER_MODE: ${SCHEDULER_MODE:-auto}
+    command: ["--interval", "${SCHEDULER_INTERVAL:-36}", "--mode", "${SCHEDULER_MODE:-auto}"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import os, sys; sys.exit(0 if os.path.exists('/app/logs/scheduler.log') else 1)"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

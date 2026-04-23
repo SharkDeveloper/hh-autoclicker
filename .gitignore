@@ -1,65 +1,73 @@
-# Python
+```
+# Dependencies
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+*.pyd
 .Python
 env/
 venv/
-ENV/
-build/
-develop-eggs/
+.venv/
+.ENV
+.ENV.*
+.venv/
+.venv.*
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+.MF
+.project
+.pydevproject
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Build artifacts
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+build/
 *.egg-info/
-.installed.cfg
-*.egg
 
-# Конфигурация с паролями
-config.json
+# Environment files
+.env
+.env.local
+*.env.*
 
-# Логи
+# Logs
 *.log
 
-# Откликнутые вакансии
-applied_vacancies.txt
-
-# IDE
+# Editor/IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Selenium
-chromedriver
-geckodriver
-
-# Debug HTML files
-debug_*.html
-*.htm
-
-# WebDriver cache
-.wdm/
-
-# License violation reports
-license_violations_report_*.json
-
-# Документация для владельца проекта (не нужна пользователям)
-docs/GITHUB_LICENSE_SETUP.md
-docs/LICENSE_MONITORING.md
-docs/LICENSE_VIOLATION_TEMPLATE.md
-docs/README.md
-
+# Django specific
+*.db
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+.env
+.env.local
+```
