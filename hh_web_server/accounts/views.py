@@ -21,26 +21,32 @@ def account_list(request):
 def account_create(request):
     """Создание нового аккаунта HH.ru"""
     if request.method == 'POST':
-        form = HHAccountForm(request.POST)
+        main_form = HHAccountForm(request.POST)
         filters_form = SearchFiltersForm(request.POST)
         
-        if form.is_valid() and filters_form.is_valid():
-            account = form.save(commit=False)
+        if main_form.is_valid() and filters_form.is_valid():
+            account = main_form.save(commit=False)
             account.user = request.user
             
-            # Сохраняем фильтры в JSON формате
-            search_filters = filters_form.to_json()
-            account.search_filters = search_filters
+            # Получаем данные из формы фильтров и сохраняем в JSON
+            filters_data = filters_form.to_json()
             
+            # Добавляем сопроводительное письмо из основной формы
+            cover_letter = main_form.cleaned_data.get('cover_letter', '')
+            if cover_letter:
+                filters_data['cover_letter'] = cover_letter
+            
+            account.search_filters = json.dumps(filters_data, ensure_ascii=False)
             account.save()
+            
             messages.success(request, f"Аккаунт '{account.name}' успешно создан")
             return redirect('account_list')
     else:
-        form = HHAccountForm()
+        main_form = HHAccountForm()
         filters_form = SearchFiltersForm()
     
     return render(request, 'account_form.html', {
-        'form': form, 
+        'form': main_form,
         'filters_form': filters_form,
         'title': 'Добавить аккаунт'
     })
@@ -52,27 +58,41 @@ def account_edit(request, pk):
     account = get_object_or_404(HHAccount, pk=pk, user=request.user)
     
     if request.method == 'POST':
-        form = HHAccountForm(request.POST, instance=account)
+        main_form = HHAccountForm(request.POST, instance=account)
         filters_form = SearchFiltersForm(request.POST)
         
-        if form.is_valid() and filters_form.is_valid():
-            account = form.save(commit=False)
+        if main_form.is_valid() and filters_form.is_valid():
+            account = main_form.save(commit=False)
             
-            # Сохраняем фильтры в JSON формате
-            search_filters = filters_form.to_json()
-            account.search_filters = search_filters
+            # Получаем данные из формы фильтров и сохраняем в JSON
+            filters_data = filters_form.to_json()
             
+            # Добавляем сопроводительное письмо из основной формы
+            cover_letter = main_form.cleaned_data.get('cover_letter', '')
+            if cover_letter:
+                filters_data['cover_letter'] = cover_letter
+            
+            account.search_filters = json.dumps(filters_data, ensure_ascii=False)
             account.save()
+            
             messages.success(request, f"Аккаунт '{account.name}' успешно обновлён")
             return redirect('account_list')
     else:
-        form = HHAccountForm(instance=account)
+        main_form = HHAccountForm(instance=account)
+        
         # Инициализируем форму фильтров существующими данными
-        initial_filters = account.search_filters if account.search_filters else {}
-        filters_form = SearchFiltersForm(initial_filters=initial_filters)
+        initial_filters = {}
+        if account.search_filters:
+            try:
+                initial_filters = json.loads(account.search_filters)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        # Передаем начальные значения для формы фильтров
+        filters_form = SearchFiltersForm(initial=initial_filters)
     
     return render(request, 'account_form.html', {
-        'form': form, 
+        'form': main_form,
         'filters_form': filters_form,
         'title': f'Редактировать: {account.name}'
     })

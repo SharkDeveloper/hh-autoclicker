@@ -29,27 +29,174 @@ class RegisterForm(forms.ModelForm):
 
 
 class HHAccountForm(forms.ModelForm):
-    """Форма управления аккаунтом HH.ru"""
+    """Форма управления аккаунтом HH.ru с удобным интерфейсом"""
     
+    # Дополнительные поля для удобного редактирования фильтров
+    search_text = forms.CharField(
+        required=False,
+        label="Ключевые слова",
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Например: Python разработчик'
+        })
+    )
+    search_area = forms.CharField(
+        required=False,
+        label="Город",
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Например: Москва'
+        })
+    )
+    search_salary = forms.IntegerField(
+        required=False,
+        label="Зарплата от (руб.)",
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'placeholder': '100000'
+        })
+    )
+    
+    # Сопроводительное письмо (исправление бага - явное поле)
+    cover_letter = forms.CharField(
+        required=False,
+        label="Сопроводительное письмо",
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'rows': 4,
+            'placeholder': 'Введите текст сопроводительного письма. Оставьте пустым для авто-генерации из вакансии.'
+        })
+    )
+    
+    # Режим поиска
+    SEARCH_MODE_CHOICES = [
+        ('manual', '🔍 По фильтрам ниже'),
+        ('auto', '🎯 Авто-подбор по вакансии (HH сам подбирает)'),
+        ('recommendations', '⭐ Рекомендации HH (без фильтров)'),
+    ]
+    search_mode = forms.ChoiceField(
+        required=False,
+        choices=SEARCH_MODE_CHOICES,
+        initial='manual',
+        label="Режим поиска вакансий",
+        widget=forms.RadioSelect(attrs={'class': 'form-check-input'})
+    )
+    
+    # URL вакансии для авто-подбора
+    vacancy_url = forms.URLField(
+        required=False,
+        label="URL примера вакансии (для авто-подбора)",
+        widget=forms.URLInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'https://hh.ru/vacancy/12345678'
+        })
+    )
+
     class Meta:
         model = HHAccount
         fields = ['name', 'username', 'password', 'resume_id', 'cover_letter', 
-                  'search_filters', 'enabled', 'auto_apply', 'max_applications_per_day']
+                  'search_filters', 'enabled', 'auto_apply', 'max_applications_per_day',
+                  'search_text', 'search_area', 'search_salary', 'search_mode', 'vacancy_url']
         widgets = {
-            'cover_letter': forms.Textarea(attrs={'rows': 4}),
-            'search_filters': forms.Textarea(attrs={'rows': 6, 'placeholder': '{"text": "Python разработчик", "area": {"id": "1"}}'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'username': forms.TextInput(attrs={'class': 'form-control', 'type': 'email'}),
+            'password': forms.PasswordInput(attrs={'class': 'form-control'}),
+            'resume_id': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Например: HZ1234567'}),
+            'search_filters': forms.HiddenInput(),  # Скрываем JSON поле, работаем через форму
+            'enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'auto_apply': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'max_applications_per_day': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 500}),
         }
         labels = {
             'name': 'Название аккаунта',
             'username': 'Email (логин) HH.ru',
             'password': 'Пароль HH.ru',
             'resume_id': 'ID резюме',
-            'cover_letter': 'Сопроводительное письмо',
-            'search_filters': 'Фильтры поиска (JSON)',
             'enabled': 'Активен',
-            'auto_apply': 'Автоотклик',
+            'auto_apply': 'Включить автоотклик',
             'max_applications_per_day': 'Макс. откликов в день',
         }
+
+    def __init__(self, *args, **kwargs):
+        """Инициализация формы с распаковкой фильтров из JSON"""
+        super().__init__(*args, **kwargs)
+        
+        # Если редактируем существующий аккаунт, распарсиваем search_filters
+        if self.instance.pk and self.instance.search_filters:
+            try:
+                filters = json.loads(self.instance.search_filters)
+                
+                # Заполняем простые поля
+                self.fields['search_text'].initial = filters.get('text', '')
+                
+                # Область может быть строкой или объектом
+                area = filters.get('area', '')
+                if isinstance(area, dict):
+                    area = area.get('name', '')
+                self.fields['search_area'].initial = area
+                
+                self.fields['search_salary'].initial = filters.get('salary', None)
+                self.fields['search_mode'].initial = filters.get('search_mode', 'manual')
+                self.fields['vacancy_url'].initial = filters.get('vacancy_url', '')
+                
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+        
+        # Порядок полей для лучшего UX
+        self.order_fields([
+            'name', 'username', 'password', 'resume_id',
+            'enabled', 'auto_apply', 'max_applications_per_day',
+            'search_mode', 'vacancy_url',  # Режим поиска
+            'search_text', 'search_area', 'search_salary',  # Фильтры
+            'cover_letter',  # Письмо
+            'search_filters',  # Скрытое поле
+        ])
+
+    def save(self, commit=True):
+        """Сохранение с упаковкой фильтров в JSON"""
+        instance = super().save(commit=False)
+        
+        # Получаем режим поиска
+        search_mode = self.cleaned_data.get('search_mode', 'manual')
+        
+        # Формируем JSON фильтров в зависимости от режима
+        filters_data = {}
+        
+        if search_mode == 'recommendations':
+            # Режим рекомендаций HH - минимальные фильтры
+            filters_data = {
+                'search_mode': 'recommendations',
+                'text': self.cleaned_data.get('search_text', ''),
+            }
+            
+        elif search_mode == 'auto' and self.cleaned_data.get('vacancy_url'):
+            # Авто-подбор по примеру вакансии
+            filters_data = {
+                'search_mode': 'auto',
+                'vacancy_url': self.cleaned_data['vacancy_url'],
+                'text': self.cleaned_data.get('search_text', ''),
+            }
+            
+        else:
+            # Ручной режим с фильтрами
+            filters_data = {'search_mode': 'manual'}
+            
+            if self.cleaned_data.get('search_text'):
+                filters_data['text'] = self.cleaned_data['search_text']
+            
+            if self.cleaned_data.get('search_area'):
+                filters_data['area'] = self.cleaned_data['search_area']
+            
+            if self.cleaned_data.get('search_salary') and self.cleaned_data['search_salary'] > 0:
+                filters_data['salary'] = self.cleaned_data['search_salary']
+                filters_data['only_with_salary'] = True
+        
+        # Сохраняем JSON
+        instance.search_filters = json.dumps(filters_data, ensure_ascii=False)
+        
+        if commit:
+            instance.save()
+        return instance
 
 
 class SearchFiltersForm(forms.Form):
