@@ -1,1 +1,33 @@
-Nothing should be ignored based on the provided file changes. The only modified file is 'hh_auto_apply/web/app.py', which appears to be a source code file and should not be ignored.
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.env
+.env.*
+.env.local
+.env.dev
+.env.test
+.env.prod
+.python-version
+pip-log.txt
+pipenv.lock
+poetry.lock
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
+.DS_Store
+Thumbs.db
+```
