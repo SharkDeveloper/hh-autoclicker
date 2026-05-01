@@ -4,6 +4,7 @@
 #   base  — Python + Chromium + зависимости
 #   test  — unit-тесты + dry-run проверка (CI/CD)
 #   prod  — планировщик откликов (продакшн)
+#   web   — веб-интерфейс управления (FastAPI + Jinja2)
 # ============================================================
 
 # ── BASE ────────────────────────────────────────────────────
@@ -87,3 +88,24 @@ LABEL stage="prod"
 # Запускаем планировщик
 ENTRYPOINT ["python3", "scheduler.py"]
 CMD ["--interval", "36s"]
+
+
+# ── WEB ────────────────────────────────────────────────────
+FROM base AS web
+
+LABEL stage="web"
+
+# Устанавливаем зависимости веб-интерфейса
+COPY web/requirements.txt /app/web/requirements.txt
+RUN pip install --no-cache-dir -r /app/web/requirements.txt
+
+# Копируем веб-файлы
+COPY web /app/web
+
+WORKDIR /app/web
+
+# Порт для веб-сервера
+EXPOSE 8000
+
+# Запуск веб-сервера
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,14 +1,21 @@
 # ============================================================
 # HH Auto Apply — Docker Compose
-#
+#se --profile test  up --build
 # Профили:
 #   test  — юнит-тесты + dry-run проверка
 #   prod  — планировщик откликов (продакшн)
+#   web   — веб-интерфейс управления (FastAPI)
 #
 # Использование:
-#   Тесты:    docker compose --profile test  up --build
+#   Тесты:    docker compo
 #   Продакшн: docker compose --profile prod  up -d --build
+#   Веб:      docker compose --profile web   up -d --build
 # ============================================================
+
+networks:
+  hh_network:
+    driver: bridge
+    name: hh_network
 
 x-common: &common
   build:
@@ -16,11 +23,13 @@ x-common: &common
     dockerfile: Dockerfile
   env_file:
     - path: config/.env
-      required: false       # файл необязателен — можно передать env иначе
+      required: True       # файл необязателен — можно передать env иначе
   volumes:
     - ./config:/app/config  # конфиги монтируются снаружи
     - ./data:/app/data       # БД откликов
     - ./logs:/app/logs       # логи
+  networks:
+    - hh_network
 
 services:
 
@@ -68,6 +77,33 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── WEB ──────────────────────────────────────────────────
+  web:
+    <<: *common
+    profiles: [web]
+    container_name: hh-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web          # собираем стадию web
+    ports:
+      - "8000:8000"
+    environment:
+      WEB_HOST: ${WEB_HOST:-0.0.0.0}
+      WEB_PORT: ${WEB_PORT:-8000}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options:

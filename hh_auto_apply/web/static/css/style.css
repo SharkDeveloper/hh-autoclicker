@@ -1,0 +1,334 @@
+/* 
+ * Стили для веб-интерфейса HH Auto Apply
+ * Темная тема с акцентами Bootstrap 5
+ */
+
+:root {
+    --primary-color: #0d6efd;
+    --secondary-color: #6c757d;
+    --success-color: #198754;
+    --info-color: #0dcaf0;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --dark-color: #212529;
+    --light-color: #f8f9fa;
+}
+
+body {
+    background-color: #121212;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Навигационная панель */
+.navbar {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid #333;
+}
+
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.3rem;
+}
+
+.navbar-brand i {
+    color: var(--primary-color);
+    margin-right: 8px;
+}
+
+/* Карточки */
+.card {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    background-color: #252525;
+    border-bottom: 1px solid #333;
+    padding: 1rem 1.25rem;
+}
+
+.card-title {
+    color: #f0f0f0;
+    font-weight: 600;
+    margin-bottom: 0;
+}
+
+.card-subtitle {
+    color: #aaa;
+}
+
+/* Таблицы */
+.table {
+    color: #e0e0e0;
+    margin-bottom: 0;
+}
+
+.table-dark {
+    background-color: #1a1a1a;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.table th {
+    border-bottom: 2px solid #333;
+    font-weight: 600;
+    color: #bbb;
+}
+
+.table td {
+    border-top: 1px solid #333;
+    vertical-align: middle;
+}
+
+/* Кнопки */
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+    transform: translateY(-1px);
+}
+
+.btn-outline-primary {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Формы */
+.form-control, .form-select {
+    background-color: #2d2d2d;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    border-radius: 6px;
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: #333;
+    border-color: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-label {
+    color: #ccc;
+    font-weight: 500;
+}
+
+.form-text {
+    color: #888;
+}
+
+.form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Модальные окна */
+.modal-content {
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+}
+
+.modal-header {
+    border-bottom: 1px solid #333;
+}
+
+.modal-footer {
+    border-top: 1px solid #333;
+}
+
+.btn-close-white {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* Прогресс-бары */
+.progress {
+    background-color: #2d2d2d;
+    border-radius: 4px;
+}
+
+.progress-bar {
+    background-color: var(--primary-color);
+    border-radius: 4px;
+}
+
+/* Бейджи */
+.badge {
+    font-weight: 500;
+    padding: 0.35em 0.65em;
+    border-radius: 4px;
+}
+
+/* Списки */
+.list-group-item {
+    background-color: #252525;
+    border-color: #333;
+    color: #e0e0e0;
+}
+
+.list-group-item:hover {
+    background-color: #2d2d2d;
+}
+
+/* Уведомления */
+.alert {
+    border-radius: 6px;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.alert-success {
+    background-color: rgba(25, 135, 84, 0.2);
+    color: #75b798;
+}
+
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: #ea868f;
+}
+
+.alert-warning {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #ffda6a;
+}
+
+.alert-info {
+    background-color: rgba(13, 202, 240, 0.2);
+    color: #79dfc1;
+}
+
+/* Футер */
+.footer {
+    margin-top: auto;
+    border-top: 1px solid #333;
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Кастомные классы */
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-active {
+    background-color: var(--success-color);
+    box-shadow: 0 0 8px var(--success-color);
+}
+
+.status-inactive {
+    background-color: var(--secondary-color);
+}
+
+.status-error {
+    background-color: var(--danger-color);
+    box-shadow: 0 0 8px var(--danger-color);
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 1rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.9rem;
+    }
+    
+    .btn-group {
+        flex-wrap: wrap;
+    }
+}
+
+/* Кастомные скроллбары */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Утилиты */
+.text-muted {
+    color: #888 !important;
+}
+
+.border-secondary {
+    border-color: #444 !important;
+}
+
+.bg-dark {
+    background-color: #1a1a1a !important;
+}
+
+/* Иконки */
+.bi {
+    vertical-align: -0.125em;
+}
+
+/* Загрузка */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Анимация пульсации для активных элементов */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
