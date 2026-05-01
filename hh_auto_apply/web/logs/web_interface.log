@@ -1,0 +1,11 @@
+2026-05-01 22:00:42,495 - core_integration - INFO - CoreIntegration инициализирован с конфигом: /workspace/hh_auto_apply/config/default.json
+2026-05-01 22:00:42,495 - job_manager - INFO - JobManager инициализирован
+2026-05-01 22:00:42,837 - httpx - INFO - HTTP Request: GET http://testserver/ "HTTP/1.1 200 OK"
+2026-05-01 22:00:47,757 - core_integration - INFO - CoreIntegration инициализирован с конфигом: /workspace/hh_auto_apply/config/default.json
+2026-05-01 22:00:47,757 - job_manager - INFO - JobManager инициализирован
+2026-05-01 22:00:48,092 - httpx - INFO - HTTP Request: GET http://testserver/ "HTTP/1.1 200 OK"
+2026-05-01 22:00:48,111 - httpx - INFO - HTTP Request: GET http://testserver/accounts "HTTP/1.1 200 OK"
+2026-05-01 22:00:48,116 - httpx - INFO - HTTP Request: GET http://testserver/jobs "HTTP/1.1 200 OK"
+2026-05-01 22:00:48,136 - httpx - INFO - HTTP Request: GET http://testserver/history "HTTP/1.1 200 OK"
+2026-05-01 22:00:48,154 - httpx - INFO - HTTP Request: GET http://testserver/templates "HTTP/1.1 200 OK"
+2026-05-01 22:00:48,173 - httpx - INFO - HTTP Request: GET http://testserver/settings "HTTP/1.1 200 OK"
