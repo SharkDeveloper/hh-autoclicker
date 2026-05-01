@@ -176,7 +176,7 @@ async def index(request: Request):
     
     return templates.TemplateResponse(
         "index.html",
-        context={
+        {
             "request": request,
             "accounts": accounts,
             "letter_templates": templates_list,
@@ -192,7 +192,7 @@ async def accounts_page(request: Request):
     accounts = load_accounts()
     return templates.TemplateResponse(
         "accounts.html",
-        context={"request": request, "accounts": accounts}
+        {"request": request, "accounts": accounts}
     )
 
 @app.get("/jobs", response_class=HTMLResponse)
@@ -200,7 +200,7 @@ async def jobs_page(request: Request):
     """Страница управления задачами"""
     return templates.TemplateResponse(
         "jobs.html",
-        context={"request": request}
+        {"request": request}
     )
 
 @app.get("/history", response_class=HTMLResponse)
@@ -209,7 +209,7 @@ async def history_page(request: Request):
     history = core_integration.get_history(limit=50)
     return templates.TemplateResponse(
         "history.html",
-        context={"request": request, "history": history.get("history", [])}
+        {"request": request, "history": history.get("history", [])}
     )
 
 @app.get("/templates", response_class=HTMLResponse)
@@ -218,7 +218,7 @@ async def templates_page(request: Request):
     templates_list = load_cover_letter_templates()
     return templates.TemplateResponse(
         "templates.html",
-        context={"request": request, "letter_templates": templates_list}
+        {"request": request, "letter_templates": templates_list}
     )
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -234,7 +234,7 @@ async def settings_page(request: Request):
     
     return templates.TemplateResponse(
         "settings.html",
-        context={"request": request, "config": config}
+        {"request": request, "config": config}
     )
 
 # API эндпоинты
