@@ -70,6 +70,8 @@ services:
       SCHEDULER_MODE: ${SCHEDULER_MODE:-auto}
     command: ["--interval", "${SCHEDULER_INTERVAL:-36}", "--mode", "${SCHEDULER_MODE:-auto}"]
     restart: unless-stopped
+    depends_on:
+      - web
     healthcheck:
       test: ["CMD", "python3", "-c",
              "import os, sys; sys.exit(0 if os.path.exists('/app/logs/scheduler.log') else 1)"]
@@ -86,14 +88,14 @@ services:
   # ── WEB ──────────────────────────────────────────────────
   web:
     <<: *common
-    profiles: [web]
+    profiles: [web, prod]
     container_name: hh-web
     build:
       context: .
       dockerfile: Dockerfile
       target: web          # собираем стадию web
     ports:
-      - "8000:8000"
+      - "80:8000"
     environment:
       WEB_HOST: ${WEB_HOST:-0.0.0.0}
       WEB_PORT: ${WEB_PORT:-8000}
