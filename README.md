@@ -1,345 +1,523 @@
-# 🤖 Автоотклик на HeadHunter (hh.ru)
+# HH Auto Apply
 
-Автоматическая система для отправки откликов на вакансии на сайте HeadHunter с поддержкой множественных поисковых запросов и умной обработкой ошибок.
+Инструмент для автоматической рассылки откликов на вакансии на [hh.ru](https://hh.ru). Работает через управление браузером Chromium — выполняет те же действия, что и живой пользователь: открывает вакансию, нажимает «Откликнуться», вводит сопроводительное письмо.
 
-## ✨ Возможности
+---
 
-- ✅ **Автоматический поиск** по нескольким ключевым словам (каждое слово обрабатывается отдельно)
-- ✅ **Автоматическая авторизация** на hh.ru с поддержкой email/пароля
-- ✅ **Автоматическая отправка откликов** с сопроводительным письмом
-- ✅ **Защита от повторных откликов** на одну вакансию
-- ✅ **Умная обработка ошибок** - автоматическое пропускание проблемных вакансий
-- ✅ **Настраиваемые задержки** между откликами (имитация человека)
-- ✅ **Лимит на количество откликов** в день
-- ✅ **Подробное логирование** всех действий
-- ✅ **Автоматическая обработка cookies banner**
-- ✅ **Подавление ошибок GPU** для чистых логов
+## Возможности
 
-## 📋 Требования
+- Авторизация на hh.ru по email и паролю
+- Поиск вакансий по ключевым словам, региону, зарплате, опыту
+- Автоматическая рассылка откликов с сопроводительным письмом
+- Поддержка нескольких аккаунтов и разных резюме
+- История откликов в SQLite — повторно на одну вакансию не откликается
+- Планировщик для регулярного запуска (раз в N часов)
+- Режим симуляции `--dry-run` — всё работает, но реальных откликов нет
+- Подробные логи в консоль и файл `logs/`
 
-- Python 3.8+
-- Google Chrome браузер
-- Аккаунт на hh.ru
+---
 
-## 🚀 Быстрый старт
+## Структура проекта
 
-1. **Клонируйте репозиторий:**
-```bash
-git clone https://github.com/ArtDemon/hh-autoclicker.git
-cd hh-autoclicker
+```
+hh_auto_apply/
+│
+├── main.py                    # Точка входа CLI
+├── scheduler.py               # Планировщик для запуска на сервере
+├── requirements.txt           # Python-зависимости
+│
+├── config/
+│   ├── default.json           # Основной конфиг (одиночный аккаунт)
+│   └── accounts.json          # Список аккаунтов (мульти-режим)
+│
+├── worker/
+│   ├── core/
+│   │   ├── application.py     # Главный класс: запуск полного цикла
+│   │   ├── config_manager.py  # Загрузка и валидация конфигурации
+│   │   └── session_manager.py # Управление браузером Chromium
+│   │
+│   ├── modules/
+│   │   ├── auth_module.py     # Авторизация (5-шаговый поток hh.ru)
+│   │   ├── search_module.py   # Поиск вакансий
+│   │   ├── apply_module.py    # Отклики на вакансии
+│   │   ├── resume_module.py   # Управление резюме
+│   │   └── monitor_module.py  # Проверка статуса откликов
+│   │
+│   ├── ui/
+│   │   └── cli_interface.py   # CLI: argparse, режимы запуска
+│   │
+│   └── utils/
+│       ├── logger.py          # Настройка логирования
+│       ├── data_utils.py      # SQLite: история откликов
+│       └── browser_utils.py   # Вспомогательные функции для браузера
+│
+├── data/                      # Данные и шаблоны
+└── logs/                      # Файлы логов (создаются автоматически)
 ```
 
-2. **Установите зависимости:**
+---
+
+## Установка на ПК
+
+### Требования
+
+| Что          | Версия           |
+|--------------|------------------|
+| Python       | 3.10+            |
+| Chromium     | любая свежая     |
+| chromedriver | = версии Chromium |
+| ОС           | Linux / macOS / Windows |
+
+---
+
+### Linux / macOS
+
 ```bash
+# 1. Скачиваем репозиторий из Replit
+#    (либо используем Git, если подключён)
+#    На странице Replit: кнопка ⋮ → Download as zip
+
+# 2. Распаковываем архив и переходим в папку
+cd hh-auto-apply/hh_auto_apply
+
+# 3. Создаём виртуальное окружение
+python3 -m venv venv
+source venv/bin/activate
+
+# 4. Устанавливаем Python-зависимости
+pip install -r requirements.txt
+
+# 5. Устанавливаем Chromium и chromedriver
+
+# Ubuntu / Debian:
+sudo apt update && sudo apt install -y chromium-browser chromium-chromedriver
+
+# macOS (через Homebrew):
+brew install --cask chromium
+brew install chromedriver
+# Разрешить запуск: System Settings → Privacy & Security → Allow chromedriver
+```
+
+### Windows
+
+1. Установить [Python 3.10+](https://www.python.org/downloads/) — при установке отметить «Add to PATH»
+2. Установить [Google Chrome](https://www.google.com/chrome/)
+3. Скачать [chromedriver](https://googlechromelabs.github.io/chrome-for-testing/) **той же версии**, что и Chrome. Положить `chromedriver.exe` в папку `hh_auto_apply/` или добавить в PATH
+4. В командной строке (`cmd` или PowerShell):
+
+```cmd
+cd hh-auto-apply\hh_auto_apply
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. **Настройте конфигурацию:**
-```bash
-# Windows
-copy config.example.json config.json
+---
 
-# Linux/Mac
-cp config.example.json config.json
-```
+## Настройка
 
-4. **Отредактируйте `config.json`:**
-   - Укажите ваш **email** и **пароль** от hh.ru
-   - Настройте **ключевые слова** для поиска (например: `["Python", "разработчик"]`)
-   - Установите **минимальную зарплату** и **город**
-   - Напишите **сопроводительное письмо**
-
-5. **Запустите скрипт:**
-```bash
-python hh_auto_apply.py
-```
-
-### ⚙️ Рекомендуемые настройки
-
-- **delay_between_applications**: 30-60 секунд (чтобы не быть заблокированным)
-- **max_applications_per_day**: 20-50 откликов
-- **headless**: false (чтобы видеть что происходит)
-
-### 📝 Пример минимальной конфигурации
+### Одиночный аккаунт — `config/default.json`
 
 ```json
 {
-  "hh_credentials": {
-    "email": "myemail@example.com",
-    "password": "mypassword123"
+  "credentials": {
+    "username": "your_email@gmail.com",
+    "password": "your_password"
+  },
+  "application": {
+    "headless": true,
+    "rate_limit": 20,
+    "delay_range": [1, 3],
+    "dry_run": false,
+    "cover_letter": "Ваше сопроводительное письмо"
   },
   "search_filters": {
-    "keywords": ["Python", "разработчик"],
-    "salary_min": 150000,
-    "area": "Москва",
+    "text": "Python разработчик",
+    "area": "1",
+    "salary": 150000,
     "experience": "between1And3"
   },
-  "application_settings": {
-    "cover_letter": "Здравствуйте! Я заинтересован в этой вакансии.",
-    "delay_between_applications": 45,
-    "max_applications_per_day": 30
+  "resume": {
+    "default_id": "",
+    "auto_update": true
   }
 }
 ```
 
-### ⚠️ Важно
+**Коды регионов (`area`):**
 
-- Не устанавливайте слишком маленькие задержки (минимум 20-30 секунд)
-- Первый запуск может потребовать ручной авторизации (если включена 2FA)
-- Проверяйте логи в файле `hh_auto_apply.log`
+| Регион            | Код |
+|-------------------|-----|
+| Москва            | 1   |
+| Санкт-Петербург   | 2   |
+| Екатеринбург      | 3   |
+| Новосибирск       | 4   |
+| Россия (везде)    | 113 |
 
-## ⚙️ Настройка config.json
+**Коды опыта (`experience`):**
 
-### Учетные данные
-```json
-"hh_credentials": {
-  "email": "ваш_email@example.com",
-  "password": "ваш_пароль"
-}
-```
-
-### Фильтры поиска
-
-**Важно:** Ключевые слова обрабатываются **по отдельности**. Для каждого ключевого слова выполняется отдельный поиск, что позволяет найти больше вакансий.
-
-```json
-"search_filters": {
-  "keywords": ["системный администратор", "DevOps", "Linux"],
-  "salary_min": 200000,
-  "area": "Москва",
-  "experience": "between3And6",
-  "employment": "full",
-  "schedule": "remote"
-}
-```
-
-**Параметры опыта работы:**
-- `"noExperience"` - без опыта
-- `"between1And3"` - от 1 до 3 лет
-- `"between3And6"` - от 3 до 6 лет
-- `"moreThan6"` - более 6 лет
-
-**Тип занятости:**
-- `"full"` - полная
-- `"part"` - частичная
-- `"project"` - проектная
-- `"volunteer"` - волонтерство
-- `"probation"` - стажировка
-
-**График работы:**
-- `"fullDay"` - полный день
-- `"shift"` - сменный
-- `"flexible"` - гибкий график
-- `"remote"` - удаленная работа
-- `"flyInFlyOut"` - вахта
-
-**Города:**
-- `"Москва"` - Москва
-- `"Санкт-Петербург"` - Санкт-Петербург
-
-### Настройки откликов
-```json
-"application_settings": {
-  "cover_letter": "Здравствуйте! Меня заинтересовала данная вакансия...",
-  "delay_between_applications": 30,
-  "max_applications_per_day": 50,
-  "skip_already_applied": true
-}
-```
-
-- `cover_letter` - текст сопроводительного письма
-- `delay_between_applications` - задержка между откликами в секундах (с случайным отклонением ±30%)
-- `max_applications_per_day` - максимальное количество откликов в день
-- `skip_already_applied` - пропускать уже откликнутые вакансии
-
-### Настройки браузера
-```json
-"browser_settings": {
-  "headless": false,
-  "implicit_wait": 10,
-  "page_load_timeout": 30
-}
-```
-
-## 🎯 Использование
-
-Запустите скрипт:
-```bash
-python hh_auto_apply.py
-```
-
-Скрипт автоматически:
-1. Откроет браузер Chrome
-2. Авторизуется на hh.ru
-3. Для каждого ключевого слова выполнит поиск вакансий
-4. Будет отправлять отклики с заданными интервалами
-5. Пропустит проблемные вакансии (vacancy_response, уже откликнутые и т.д.)
-6. Сохранит статистику в лог-файл
-
-## 📊 Логирование
-
-Все действия записываются в файл `hh_auto_apply.log` и выводятся в консоль.
-
-**Список откликнутых вакансий** сохраняется в `applied_vacancies.txt` для предотвращения повторных откликов.
-
-**Уровни логирования:**
-- `INFO` - основная информация о работе скрипта
-- `DEBUG` - детальная информация для отладки
-- `WARNING` - предупреждения (пропущенные вакансии)
-- `ERROR` - ошибки
-
-## 🔍 Как работает поиск
-
-Скрипт обрабатывает каждое ключевое слово **отдельно**:
-
-1. Для первого ключевого слова выполняется поиск
-2. Обрабатываются все найденные вакансии (по страницам)
-3. Переход к следующему ключевому слову
-4. И так далее...
-
-Это позволяет найти **максимальное количество** подходящих вакансий, так как каждый запрос более широкий.
-
-## ⚠️ Важные замечания
-
-1. **Соблюдайте лимиты**: Не устанавливайте слишком маленькие задержки между откликами (рекомендуется минимум 30 секунд)
-2. **Персонализация**: Настройте сопроводительное письмо под себя
-3. **Проверка**: Периодически проверяйте логи на наличие ошибок
-4. **Безопасность**: Никогда не публикуйте файл `config.json` с вашими учетными данными
-5. **Ответственность**: Используйте скрипт в соответствии с правилами использования hh.ru
-
-## 🛡️ Защита от блокировки
-
-Скрипт включает несколько механизмов защиты:
-- ✅ Случайные задержки между действиями (±30%)
-- ✅ Имитация поведения человека (прокрутка, задержки)
-- ✅ Ограничение количества откликов в день
-- ✅ Случайный User-Agent
-- ✅ Подавление признаков автоматизации
-
-## 🐛 Решение проблем
-
-### Браузер не запускается
-- Убедитесь, что установлен Google Chrome
-- ChromeDriver устанавливается автоматически через `webdriver-manager`
-
-### Ошибка авторизации
-- Проверьте правильность email и пароля в `config.json`
-- Возможно, требуется двухфакторная аутентификация (в этом случае авторизуйтесь вручную)
-- Если появляется CAPTCHA, скрипт предложит пройти её вручную
-
-### Не находит вакансии
-- Проверьте правильность ключевых слов в `config.json`
-- Убедитесь, что фильтры не слишком строгие
-- Проверьте логи для деталей
-
-### Не находит кнопку отклика
-- Структура сайта могла измениться
-- Проверьте логи для деталей ошибки
-- Некоторые вакансии могут требовать особой обработки (автоматически пропускаются)
-
-### Ошибки GPU/WebGL в логах
-- Это нормально, ошибки GPU подавлены и не влияют на работу
-- Если они мешают, можно полностью отключить GPU через настройки Chrome
-
-## 📁 Структура проекта
-
-```
-hh-autoclicker/
-├── hh_auto_apply.py      # Основной скрипт
-├── config.example.json   # Пример конфигурации
-├── config.json           # Ваша конфигурация (не коммитится, создайте из example)
-├── requirements.txt      # Зависимости Python
-├── README.md             # Документация
-├── CONTRIBUTING.md       # Руководство по вкладу в проект
-├── LICENSE               # Лицензия
-├── .gitignore           # Игнорируемые файлы
-└── applied_vacancies.txt # Список откликнутых вакансий (создается автоматически)
-```
-
-## 📝 Примеры использования
-
-### Поиск вакансий системного администратора
-```json
-"search_filters": {
-  "keywords": ["системный администратор", "DevOps", "Linux", "Windows Server"],
-  "salary_min": 200000,
-  "area": "Москва",
-  "experience": "between3And6",
-  "employment": "full",
-  "schedule": "remote"
-}
-```
-
-### Поиск вакансий Python разработчика
-```json
-"search_filters": {
-  "keywords": ["Python", "разработчик", "программист", "Django", "Flask"],
-  "salary_min": 150000,
-  "area": "Москва",
-  "experience": "between1And3",
-  "employment": "full"
-}
-```
-
-## 🤝 Вклад в проект
-
-Мы рады любому вкладу! Если вы нашли баг или хотите предложить улучшение:
-
-1. Создайте [Issue](https://github.com/ArtDemon/hh-autoclicker/issues) с описанием проблемы или идеи
-2. Или создайте [Pull Request](https://github.com/ArtDemon/hh-autoclicker/pulls) с вашими изменениями
-
-Подробнее о том, как внести вклад, см. в [CONTRIBUTING.md](CONTRIBUTING.md).
-
-**Контакты автора:**
-- 📧 Email: temkru45@gmail.com
-- 💬 Telegram: [@swiftdoom](https://t.me/swiftdoom)
-- 💼 Резюме на hh.ru: [Круглов Артём Геннадьевич](https://hh.ru/resume/84ea26b5ff03be06d70039ed1f4946666b746a)
-
-## 📄 Лицензия
-
-Этот проект распространяется под **MIT License с ограничением на коммерческое использование**.
-
-### ⚠️ Ограничения
-
-**Коммерческое использование запрещено без письменного разрешения.**
-
-Коммерческое использование включает:
-- Продажу программного обеспечения или его частей
-- Использование в коммерческих продуктах/сервисах
-- Предоставление как платной услуги
-- Использование в бизнес-процессах компаний
-
-### ✅ Разрешенное использование
-
-- Личное использование
-- Образовательные цели
-- Исследования
-- Некоммерческие проекты
-
-### 📧 Коммерческое использование
-
-Для коммерческого использования требуется письменное разрешение. 
-
-**Контакты для связи:**
-- 📧 Email: temkru45@gmail.com
-- 💬 Telegram: [@swiftdoom](https://t.me/swiftdoom)
-- 💼 Резюме на hh.ru: [Круглов Артём Геннадьевич](https://hh.ru/resume/84ea26b5ff03be06d70039ed1f4946666b746a)
-- 🐙 [GitHub Issues](https://github.com/ArtDemon/hh-autoclicker/issues)
-
-См. файл [LICENSE](LICENSE) для полных условий лицензии.
-
-### 🔍 Мониторинг нарушений
-
-Проект активно мониторится на предмет нарушений лицензии. Коммерческое использование без разрешения запрещено.
-
-## ⚖️ Отказ от ответственности
-
-Этот инструмент предназначен только для образовательных целей. Автоматизация может нарушать правила использования сайта hh.ru. 
-
-**Используйте на свой риск и ответственность.** Авторы не несут ответственности за любые последствия использования данного программного обеспечения, включая возможную блокировку аккаунта на hh.ru.
+| Значение        | Описание       |
+|-----------------|----------------|
+| `noExperience`  | Без опыта      |
+| `between1And3`  | От 1 до 3 лет  |
+| `between3And6`  | От 3 до 6 лет  |
+| `moreThan6`     | Более 6 лет    |
 
 ---
 
-**⭐ Если проект был полезен, поставьте звезду!**
+### Несколько аккаунтов — `config/accounts.json`
 
-💡 **Примечание:** Этот проект создан с помощью AI (100% Vibe code). Код написан с использованием искусственного интеллекта для автоматизации процесса поиска работы.
+```json
+[
+  {
+    "name": "Аккаунт Иван",
+    "username": "ivan@gmail.com",
+    "password": "пароль1",
+    "resume_id": "",
+    "cover_letter": "Здравствуйте! Меня зовут Иван...",
+    "search_filters": {
+      "text": "Python разработчик",
+      "area": "1"
+    },
+    "enabled": true
+  },
+  {
+    "name": "Аккаунт Мария",
+    "username": "maria@gmail.com",
+    "password": "пароль2",
+    "cover_letter": "Здравствуйте! Меня зовут Мария...",
+    "search_filters": {
+      "text": "Data Analyst",
+      "area": "2"
+    },
+    "enabled": true
+  }
+]
+```
+
+> Поставьте `"enabled": false` чтобы временно отключить аккаунт, не удаляя его.
+
+---
+
+## Тестирование на ПК (первый запуск)
+
+```bash
+# Находимся в hh_auto_apply/ и активировано venv
+
+# Шаг 1: пробный запуск — без реальных откликов
+python3 main.py --dry-run --keywords "Python разработчик" --area 1
+
+# Если всё прошло успешно (найдены вакансии, вход выполнен) —
+# Шаг 2: реальный отклик (начнёт откликаться!)
+python3 main.py --keywords "Python разработчик" --area 1
+```
+
+Убедитесь, что в логах появятся строки:
+```
+✓ Вход выполнен успешно
+Найдено XX вакансий
+Пакетный отклик завершён: {'success': XX, ...}
+```
+
+---
+
+## Все команды
+
+```bash
+# Базовый запуск
+python3 main.py --mode auto --keywords "Ключевые слова" --area 1
+
+# С минимальной зарплатой и уровнем опыта
+python3 main.py --keywords "Backend" --area 1 --salary 150000 --experience between1And3
+
+# Несколько аккаунтов из файла
+python3 main.py --accounts config/accounts.json
+
+# Ручной режим (список URL из файла)
+python3 main.py --mode manual --vacancy-file data/vacancies.txt
+
+# Рекомендации hh.ru
+python3 main.py --mode recommendations
+
+# Сохранить отчёт в файл
+python3 main.py --keywords "Python" --area 1 --export report.txt
+
+# Подробный вывод (DEBUG)
+python3 main.py --dry-run -v
+```
+
+### Все параметры
+
+```
+--mode            auto | manual | recommendations   (по умолчанию: auto)
+--keywords        Ключевые слова поиска
+--area            Код региона (1 = Москва, 2 = СПб, 113 = Россия)
+--salary          Минимальная зарплата (руб.)
+--experience      noExperience | between1And3 | between3And6 | moreThan6
+--vacancy-file    Файл с URL вакансий, по одному на строку
+--limit           Откликов в минуту (по умолчанию: 20)
+--resume-id       ID конкретного резюме
+--accounts        Файл со списком аккаунтов
+--config          Путь к конфигу (по умолчанию: config/default.json)
+--export          Сохранить отчёт в файл
+--monitor         Проверить статус откликов после завершения
+--dry-run         Симуляция без реальных откликов
+--verbose, -v     Подробный вывод (DEBUG)
+```
+
+---
+
+## Docker (рекомендуемый способ развёртывания)
+
+Проект поставляется с многостадийным образом и двумя профилями: **test** (проверки) и **prod** (продакшн).
+
+### Подготовка
+
+```bash
+# Копируем шаблон переменных окружения
+cp config/.env.example config/.env
+# Открываем и заполняем email / пароль
+nano config/.env
+```
+
+Содержимое `config/.env`:
+```env
+HH_USERNAME=your_email@gmail.com
+HH_PASSWORD=your_password
+SCHEDULER_INTERVAL=36    # каждые 6 часов
+SCHEDULER_MODE=auto
+```
+
+---
+
+### Стадия TEST — запуск проверок
+
+Выполняется автоматически при каждом деплое или вручную:
+
+```bash
+docker compose --profile test up --build
+```
+
+**Что происходит внутри:**
+1. Проверяет наличие и совместимость Chromium + chromedriver
+2. Запускает **50 юнит-тестов** (без браузера, без учётных данных)
+3. Если заданы `HH_USERNAME` / `HH_PASSWORD` — запускает **интеграционный dry-run** (реальный вход + поиск вакансий, без откликов)
+
+Если все проверки прошли — в консоли появится:
+```
+✓ Все проверки пройдены — образ готов к продакшену
+```
+
+---
+
+### Стадия PROD — запуск планировщика
+
+```bash
+# Фоновый запуск с автоперезапуском
+docker compose --profile prod up -d --build
+
+# Следить за логами
+docker compose logs -f prod
+
+# Остановить
+docker compose --profile prod down
+```
+
+**Планировщик** автоматически:
+- Загружает аккаунты из `config/accounts.json`
+- Запускает цикл откликов по каждому аккаунту
+- Ждёт `SCHEDULER_INTERVAL` минут (по умолчанию 36 = 6 часов)
+- Повторяет бесконечно, перезапускается при падении
+
+---
+
+### Полный цикл: сначала тест, потом прод
+
+```bash
+# 1. Сборка и тестирование
+docker compose --profile test up --build
+
+# 2. Если тесты прошли — деплой в продакшн
+docker compose --profile prod up -d --build
+```
+
+---
+
+### Полезные команды Docker
+
+```bash
+# Статус контейнеров
+docker compose ps
+
+# Логи планировщика (последние 50 строк)
+docker compose logs --tail=50 prod
+
+# Войти в контейнер (отладка)
+docker compose exec prod bash
+
+# Просмотреть историю откликов в контейнере
+docker compose exec prod sqlite3 data/applied_vacancies.db \
+  "SELECT account, vacancy_url, applied_date FROM applied_vacancies ORDER BY applied_date DESC LIMIT 20;"
+
+# Удалить контейнеры и образы (полная очистка)
+docker compose down --rmi all
+```
+
+---
+
+## Планировщик (запуск на сервере)
+
+`scheduler.py` запускает все аккаунты из `accounts.json` по расписанию:
+
+```bash
+# Один раз (для cron)
+python3 scheduler.py --once
+
+# Непрерывно каждые 6 часов
+python3 scheduler.py --interval 36
+
+# Каждые 2 часа, симуляция
+python3 scheduler.py --interval 120 --dry-run
+
+# Рекомендации вместо поиска
+python3 scheduler.py --mode recommendations --interval 480
+```
+
+---
+
+## Развёртывание на сервере
+
+### Вариант 1: VPS / выделенный сервер (Ubuntu)
+
+```bash
+# 1. Подключаемся по SSH
+ssh user@your-server-ip
+
+# 2. Устанавливаем системные зависимости
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip chromium-browser chromium-chromedriver git
+
+# 3. Загружаем проект
+git clone https://github.com/yourusername/hh-auto-apply.git
+cd hh-auto-apply/hh_auto_apply
+
+# 4. Настраиваем окружение
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 5. Настраиваем аккаунты
+nano config/accounts.json
+
+# 6. Тестируем
+python3 main.py --dry-run --accounts config/accounts.json
+```
+
+#### Запуск через cron (например, в 9:00, 15:00 и 21:00)
+
+```bash
+crontab -e
+```
+
+Добавить строку (замените путь на свой):
+```
+0 9,15,21 * * * cd /home/user/hh-auto-apply/hh_auto_apply && /home/user/hh-auto-apply/hh_auto_apply/venv/bin/python3 scheduler.py --once >> logs/cron.log 2>&1
+```
+
+#### Запуск как постоянный фоновый сервис
+
+Создать файл `/etc/systemd/system/hh-auto-apply.service`:
+
+```ini
+[Unit]
+Description=HH Auto Apply Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/home/your_username/hh-auto-apply/hh_auto_apply
+ExecStart=/home/your_username/hh-auto-apply/hh_auto_apply/venv/bin/python3 scheduler.py --interval 36
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Активировать:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable hh-auto-apply
+sudo systemctl start hh-auto-apply
+
+# Следить за логами сервиса
+sudo journalctl -u hh-auto-apply -f
+```
+
+---
+
+### Вариант 2: screen / tmux (простой способ без настройки systemd)
+
+```bash
+screen -S hh-bot
+
+cd hh-auto-apply/hh_auto_apply
+source venv/bin/activate
+python3 scheduler.py --interval 36
+
+# Отключиться (бот продолжает работать): Ctrl+A, затем D
+# Вернуться к сеансу: screen -r hh-bot
+```
+
+---
+
+## Логи
+
+```
+logs/
+├── hh_auto_apply.log    — все события приложения
+└── scheduler.log        — события планировщика
+```
+
+```bash
+# Следить в реальном времени
+tail -f logs/hh_auto_apply.log
+```
+
+---
+
+## История откликов (SQLite)
+
+Все отклики хранятся в `data/applied_vacancies.db`. Посмотреть:
+
+```bash
+sqlite3 data/applied_vacancies.db \
+  "SELECT account, vacancy_url, applied_date FROM applied_vacancies ORDER BY applied_date DESC LIMIT 20;"
+```
+
+---
+
+## Возможные проблемы
+
+| Проблема | Решение |
+|---|---|
+| `chromedriver not found` | Установите chromedriver и убедитесь, что он есть в PATH |
+| `version mismatch` | Скачайте chromedriver той же версии, что и Chrome |
+| `Не удалось войти` | Проверьте логин/пароль; при первом входе hh.ru может попросить подтвердить по SMS |
+| `Вакансии не найдены` | Попробуйте другие ключевые слова или более широкий регион (area=113) |
+| На сервере браузер не запускается | Убедитесь что `"headless": true` в конфиге и установлен `chromium-browser` |
+
+---
+
+## Безопасность
+
+- Логины и пароли хранятся **только локально** в `config/` — никуда не передаются
+- Приложение имитирует поведение человека: случайные задержки между откликами
+- При блокировке аккаунта hh.ru — уменьшите `rate_limit` в конфиге (попробуйте 5–10)
+
+---
+
+## Лицензия
+
+MIT — используйте на свой страх и риск. Убедитесь, что соблюдаете [правила использования hh.ru](https://hh.ru/article/1918).

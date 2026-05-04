@@ -26,7 +26,7 @@
 ```
 hh_auto_apply/
   main.py                    # Точка входа (настройка логирования + запуск CLI)
-  src/
+  worker/
     core/
       application.py         # Главный класс (запуск полного цикла)
       config_manager.py      # Загрузка конфигурации из JSON

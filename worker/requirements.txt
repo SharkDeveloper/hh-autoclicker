@@ -1,0 +1,10 @@
+selenium>=4.0
+beautifulsoup4
+lxml
+requests
+python-dotenv
+fake-useragent
+python-dateutil
+kafka-python>=2.0
+psycopg2-binary
+cryptography

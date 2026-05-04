@@ -1,0 +1,96 @@
+# docker-compose.yml
+# Запуск:     docker compose up --build
+# Остановка:  docker compose down
+# Dev режим:  docker compose --profile dev up --build
+
+services:
+
+  # ── POSTGRES ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # ── KAFKA (KRaft, без Zookeeper) ──────────────────────────
+  kafka:
+    image: apache/kafka:3.7.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    restart: unless-stopped
+
+  # ── KAFKA UI (только --profile dev) ───────────────────────
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+    profiles:
+      - dev
+
+  # ── WEB SERVICE ───────────────────────────────────────────
+  web:
+    build:
+      context: ./web_service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_JOBS: apply-jobs
+      KAFKA_TOPIC_RESULTS: apply-results
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: 10080
+      FERNET_KEY: ${FERNET_KEY}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      - postgres
+      - kafka
+    restart: unless-stopped
+
+  # ── WORKER SERVICE ────────────────────────────────────────
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_JOBS: apply-jobs
+      KAFKA_TOPIC_RESULTS: apply-results
+      FERNET_KEY: ${FERNET_KEY}
+      WORKER_HEADLESS: "true"
+      CHROMIUM_BINARY: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      HH_LOGIN: ${HH_LOGIN}
+      HH_PASSWORD: ${HH_PASSWORD}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      - postgres
+      - kafka
+    restart: on-failure:5
+
+volumes:
+  pgdata:
