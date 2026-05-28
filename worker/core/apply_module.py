@@ -9,7 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from core.session_manager import SessionManager
-from utils.data_utils import AppliedVacanciesDB
+#from utils.data_utils import AppliedVacanciesDB
 
 
 class ApplyModule:
@@ -24,7 +24,7 @@ class ApplyModule:
         """
         self.session = session_manager
         self.logger = logging.getLogger(__name__)
-        self.applied_db = AppliedVacanciesDB()
+        #self.applied_db = AppliedVacanciesDB()
         self._account = ""  # Текущий аккаунт (устанавливается через set_account)
 
     @property
@@ -56,9 +56,9 @@ class ApplyModule:
             vacancy_id = self._extract_vacancy_id(vacancy_url)
 
             # Проверка, не откликались ли уже (с учётом аккаунта)
-            if self.applied_db.is_applied(vacancy_id, account=self._account):
-                self.logger.info(f"[{self._account or 'default'}] Уже откликались на {vacancy_id}, пропускаем")
-                return True
+            # if self.applied_db.is_applied(vacancy_id, account=self._account):
+            #     self.logger.info(f"[{self._account or 'default'}] Уже откликались на {vacancy_id}, пропускаем")
+            #     return True
 
             if dry_run:
                 self.logger.info(f"[DRY RUN] Симуляция отклика на: {vacancy_url}")
@@ -138,9 +138,9 @@ class ApplyModule:
             time.sleep(3)
 
             # Сохранение в базе данных
-            self.applied_db.add_applied(vacancy_id, vacancy_url, account=self._account)
-            self.logger.info(f"Вакансия {vacancy_id} добавлена в список отвеченных (аккаунт: {self._account or 'default'})")
-            return True
+            # self.applied_db.add_applied(vacancy_id, vacancy_url, account=self._account)
+            # self.logger.info(f"Вакансия {vacancy_id} добавлена в список отвеченных (аккаунт: {self._account or 'default'})")
+            # return True
 
         except Exception as e:
             self.logger.error(f"Ошибка отклика на вакансию {vacancy_url}: {e}")

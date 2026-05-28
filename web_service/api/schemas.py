@@ -65,7 +65,7 @@ class JobFilters(BaseModel):
 
 
 class JobCreate(BaseModel):
-    mode: str = Field(..., regex="^(auto|manual|recommendations)$")
+    mode: str = Field(..., pattern="^(auto|manual|recommendations)$")
     filters: Optional[JobFilters] = None
     vacancy_urls: Optional[List[str]] = None
     resume_id: Optional[str] = None  # Переопределение resume_id из настроек

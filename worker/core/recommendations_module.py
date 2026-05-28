@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from utils.browser_utils import human_delay
+from utils.browser_utils import BrowserUtils
 
 
 class RecommendationsModule:
@@ -56,7 +56,7 @@ class RecommendationsModule:
             
             try:
                 self.driver.get(url)
-                human_delay(2, 4)  # Задержка для загрузки страницы
+                BrowserUtils.human_delay(2, 4)  # Задержка для загрузки страницы
                 
                 # Проверяем, есть ли вакансии на странице
                 vacancy_elements = self.driver.find_elements(By.CSS_SELECTOR, '[data-qa="vacancy-serp__vacancy"]')
@@ -79,7 +79,7 @@ class RecommendationsModule:
                     break
                 
                 page += 1
-                human_delay(1, 2)  # Задержка перед переходом на следующую страницу
+                BrowserUtils.human_delay(1, 2)  # Задержка перед переходом на следующую страницу
                 
             except Exception as e:
                 self.logger.error(f"Ошибка при парсинге страницы {page + 1}: {e}")

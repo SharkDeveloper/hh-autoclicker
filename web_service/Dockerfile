@@ -15,9 +15,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем исходный код
 COPY . .
 
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Переменные окружения
 ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1ёё
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Запуск приложения с миграциями
-CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["uvicorn main:app --host 0.0.0.0 --port 8000"]

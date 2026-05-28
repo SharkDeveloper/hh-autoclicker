@@ -86,7 +86,7 @@ worker/                      # Сервис 2: Autoclicker
     apply_module.py          # подача отклика + сопроводительное письмо
     resume_module.py         # выбор резюме пользователя
   utils/
-    browser_utils.py         # хелперы Selenium (wait, scroll, human delay)
+    browser_utils.py         # хелперы Selenium (wait, scroll, delay)
     logger.py                # настройка логирования (не использовать print)
   requirements.txt
 ```

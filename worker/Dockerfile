@@ -17,11 +17,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем исходный код
 COPY . .
 
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Переменные окружения
 ENV CHROMIUM_BINARY=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Запуск worker
 CMD ["python", "main.py"]

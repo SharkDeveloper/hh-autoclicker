@@ -1,0 +1,18 @@
+Generic single-database configuration for Alembic.
+
+This directory contains migration scripts for the HH AutoApply database.
+
+To create a new migration:
+1. Make changes to models in `db/models.py`
+2. Run: `alembic revision --autogenerate -m "Description of changes"`
+3. Review the generated migration script in `versions/`
+4. Apply: `alembic upgrade head`
+
+To downgrade:
+`alembic downgrade -1`
+
+To see current revision:
+`alembic current`
+
+To see history:
+`alembic history --verbose`

@@ -13,7 +13,7 @@ from cryptography.fernet import Fernet
 # Добавляем родительскую директорию в путь для импорта модулей worker
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils.logger import get_logger
+from utils.logger import get_module_logger
 from utils.db_utils import get_db_connection, update_job_status, is_already_applied, save_apply_result
 from core.session_manager import SessionManager
 from core.auth_module import AuthModule
@@ -22,7 +22,7 @@ from core.recommendations_module import RecommendationsModule
 from core.apply_module import ApplyModule
 from core.resume_module import ResumeModule
 
-logger = get_logger(__name__)
+logger = get_module_logger(__name__)
 
 
 class JobConsumer:
