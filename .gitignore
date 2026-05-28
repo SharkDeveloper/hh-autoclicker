@@ -42,3 +42,4 @@ logs/*.log
 .idea/
 .vscode/
 *.iml
+.env
