@@ -59,6 +59,10 @@ class JobConsumer:
         self.apply_module = None
         self.resume_module = None
 
+        # Мультипользовательское состояние текущей браузерной сессии
+        self._current_user_id = None
+        self._current_login = None
+
         fernet_key = os.environ.get("FERNET_KEY")
         if not fernet_key:
             raise ValueError("Переменная окружения FERNET_KEY не задана")
@@ -67,7 +71,11 @@ class JobConsumer:
         logger.info(f"JobConsumer инициализирован, слушает топик {self.topic_jobs}")
 
     def set_session_manager(self, session_manager: SessionManager):
-        """Привязать готовую сессию (с уже выполненным входом) и инициализировать модули."""
+        """Привязать готовый SessionManager и инициализировать модули.
+
+        Auth/Search/Apply/Resume принимают SessionManager;
+        Recommendations исторически принимает driver.
+        """
         self.session_manager = session_manager
         driver = session_manager.get_driver()
         self.auth_module = AuthModule(session_manager)
@@ -104,6 +112,51 @@ class JobConsumer:
                 })
         return result
 
+    def _ensure_logged_in(self, user_id: str, hh_login: str, hh_password: str):
+        """Гарантировать, что браузер залогинен под указанным пользователем.
+
+        Модель «одна сессия браузера, много пользователей»:
+        - если текущий user_id совпадает — ничего не делаем;
+        - при смене пользователя сохраняем cookies предыдущего, чистим cookies,
+          переключаем SessionManager и пробуем восстановить сессию из
+          sessions/{user_id}.pkl;
+        - если сохранённая сессия невалидна — свежий логин через AuthModule.
+        """
+        user_id = str(user_id)
+        driver = self.session_manager.get_driver()
+
+        if self._current_user_id == user_id:
+            return
+
+        if self._current_user_id is not None:
+            logger.info(
+                f"Смена пользователя: {self._current_login or self._current_user_id} -> {hh_login}"
+            )
+            # Сохраняем cookies предыдущего пользователя (в его же файл)
+            self.session_manager.save_session()
+            driver.get("https://hh.ru/")
+            driver.delete_all_cookies()
+
+        self.session_manager.set_user(user_id)
+
+        # Пробуем восстановить сохранённую сессию нового пользователя
+        driver.get("https://hh.ru/")
+        if self.session_manager.restore_session():
+            if self.auth_module.check_auth_status():
+                logger.info(f"Сессия восстановлена для {hh_login}")
+                self._current_user_id = user_id
+                self._current_login = hh_login
+                return
+
+        logger.info(f"Авторизация под {hh_login}...")
+        ok = self.auth_module.login({"username": hh_login, "password": hh_password})
+        if not ok or not self.auth_module.check_auth_status():
+            raise RuntimeError(f"Не удалось авторизоваться на hh.ru под логином {hh_login}")
+        self.session_manager.save_session()
+        self._current_user_id = user_id
+        self._current_login = hh_login
+        logger.info(f"Авторизован под {hh_login}")
+
     def process_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         job_id = job_data["job_id"]
         user_id = job_data["user_id"]
@@ -122,11 +175,10 @@ class JobConsumer:
         conn = get_db_connection()
         update_job_status(conn, job_id, "running")
 
+        # Логин «под задачу»: один Chromium, много пользователей.
         if not self.session_manager:
             self.init_browser_modules()
-            ok = self.auth_module.login({"username": hh_login, "password": hh_password})
-            if not ok:
-                raise RuntimeError("Не удалось авторизоваться на hh.ru")
+        self._ensure_logged_in(user_id, hh_login, hh_password)
 
         applies: List[Dict[str, Any]] = []
         total_sent = 0
@@ -255,7 +307,8 @@ class JobConsumer:
             for message in self.consumer:
                 job_data = message.value
                 logger.info(
-                    f"Получено задание: {job_data['job_id']} (режим: {job_data['mode']})"
+                    f"Задача {job_data['job_id']} от user_id={job_data['user_id']} "
+                    f"(mode={job_data['mode']})"
                 )
                 result = self.process_job(job_data)
                 self.publish_result(result)

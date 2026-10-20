@@ -86,8 +86,9 @@ services:
       WORKER_HEADLESS: "true"
       CHROMIUM_BINARY: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
-      HH_LOGIN: ${HH_LOGIN}
-      HH_PASSWORD: ${HH_PASSWORD}
+      SESSIONS_DIR: /app/sessions
+    volumes:
+      - sessions:/app/sessions
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,3 +98,4 @@ services:
 
 volumes:
   pgdata:
+  sessions:

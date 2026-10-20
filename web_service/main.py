@@ -47,6 +47,17 @@ else:
     logger.warning(f"Директория static не найдена: {static_dir}")
 
 
+# ВАЖНО: все /api/* маршруты должны быть объявлены ВЫШЕ catch-all
+# @app.get("/{full_path:path}") — иначе health и прочие API-ручки вернут 404.
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "hh-autoapply-web",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str, request: Request):
     if full_path.startswith("api/"):
@@ -71,7 +82,7 @@ async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Запускаем Kafka consumer в отдельном потоке, не блокируя startup
+    # Запускаем блокирующий Kafka consumer в executor, не блокируя startup
     await start_kafka_consumer_background()
     logger.info("Kafka consumer запущен в фоновом режиме")
 
@@ -79,15 +90,6 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Остановка HH AutoApply Web Service")
-
-
-@app.get("/api/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "service": "hh-autoapply-web",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
 
 
 if __name__ == "__main__":

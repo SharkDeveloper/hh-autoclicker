@@ -26,14 +26,14 @@ async def get_settings(
         select(Settings).where(Settings.user_id == current_user.id)
     )
     settings = result.scalar_one_or_none()
-    
+
     if not settings:
         # Создаём настройки по умолчанию, если их нет
         settings = Settings(user_id=current_user.id)
         db.add(settings)
         await db.commit()
         await db.refresh(settings)
-    
+
     return settings
 
 
@@ -45,32 +45,38 @@ async def update_settings(
 ):
     """
     Обновить настройки текущего пользователя.
+
+    hh_login / hh_password / resume_id хранятся в таблице users
+    (пароль — только в зашифрованном виде через Fernet).
+    Остальные поля относятся к таблице settings.
     """
     result = await db.execute(
         select(Settings).where(Settings.user_id == current_user.id)
     )
     settings = result.scalar_one_or_none()
-    
+
     if not settings:
         settings = Settings(user_id=current_user.id)
         db.add(settings)
-    
-    # Обновляем поля
-    for field, value in settings_data.dict(exclude_unset=True).items():
-        if field == "hh_password" and value is not None:
-            # Шифруем пароль перед сохранением
-            encrypted = encrypt_password(value)
-            setattr(settings, field, encrypted)
-        else:
-            setattr(settings, field, value)
-    
-    # Обновляем также поля в таблице users (hh_login, resume_id)
+        await db.flush()
+
+    # Поля пользователей — в users, пароль шифруется Fernet
     if settings_data.hh_login is not None:
         current_user.hh_login = settings_data.hh_login
     if settings_data.resume_id is not None:
         current_user.resume_id = settings_data.resume_id
-    
+    if settings_data.hh_password:
+        current_user.hh_password = encrypt_password(settings_data.hh_password)
+
+    # Остальные поля — в Settings
+    user_fields = {"hh_login", "hh_password", "resume_id"}
+    for field, value in settings_data.dict(exclude_unset=True).items():
+        if field in user_fields:
+            continue
+        if hasattr(settings, field):
+            setattr(settings, field, value)
+
     await db.commit()
     await db.refresh(settings)
-    
+
     return settings

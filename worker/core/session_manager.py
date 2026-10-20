@@ -71,7 +71,12 @@ def _find_chromedriver_binary() -> str:
 
 
 class SessionManager:
-    """Управление сессиями браузера"""
+    """Управление сессиями браузера (мультипользовательский режим).
+
+    Worker держит один экземпляр Chromium. Cookies каждого пользователя
+    сохраняются в отдельный файл sessions/{user_id}.pkl и восстанавливаются
+    при переключении между пользователями.
+    """
 
     def __init__(self, config: Optional[ConfigManager] = None):
         """
@@ -85,8 +90,29 @@ class SessionManager:
             config = ConfigManager(os.environ.get("CONFIG_PATH", "config/default.json"))
         self.config = config
         self.driver: Optional[webdriver.Chrome] = None
-        self.session_file = "session.pkl"
+        self.session_dir = os.environ.get("SESSIONS_DIR", "sessions")
+        os.makedirs(self.session_dir, exist_ok=True)
+        self._current_user: Optional[str] = None
+        self.session_file = os.path.join(self.session_dir, "default.pkl")
         self.logger = logging.getLogger(__name__)
+
+    def set_user(self, user_id: str):
+        """Переключить менеджера на другого пользователя.
+
+        При смене пользователя cookies предыдущего сохраняются на диск,
+        а session_file переназначается на файл нового пользователя.
+        """
+        user_id = str(user_id)
+        if self._current_user == user_id:
+            return
+        if self._current_user is not None and self.driver is not None:
+            self.save_session()
+            self.logger.info(
+                f"Cookies сохранены: {os.path.join(self.session_dir, self._current_user + '.pkl')}"
+            )
+        self._current_user = user_id
+        self.session_file = os.path.join(self.session_dir, f"{user_id}.pkl")
+        self.logger.info(f"SessionManager переключён на пользователя {user_id}")
 
     def get_driver(self) -> webdriver.Chrome:
         """Вернуть драйвер, создав его при необходимости."""
@@ -152,7 +178,7 @@ class SessionManager:
                 cookies = self.driver.get_cookies()
                 with open(self.session_file, "wb") as f:
                     pickle.dump(cookies, f)
-                self.logger.info("Сессия успешно сохранена")
+                self.logger.info(f"Сессия сохранена в {self.session_file}")
             except Exception as e:
                 self.logger.error(f"Ошибка сохранения сессии: {e}")
 
@@ -162,11 +188,14 @@ class SessionManager:
                 cookies = pickle.load(f)
             if self.driver:
                 for cookie in cookies:
-                    self.driver.add_cookie(cookie)
-                self.logger.info("Сессия успешно восстановлена")
+                    try:
+                        self.driver.add_cookie(cookie)
+                    except Exception as e:
+                        self.logger.debug(f"Пропущен cookie при восстановлении: {e}")
+                self.logger.info(f"Cookies восстановлены: {self.session_file}")
                 return True
         except FileNotFoundError:
-            self.logger.warning("Файл сессии не найден")
+            self.logger.warning(f"Файл сессии не найден: {self.session_file}")
         except Exception as e:
             self.logger.error(f"Ошибка восстановления сессии: {e}")
         return False

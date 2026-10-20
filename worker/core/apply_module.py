@@ -2,9 +2,7 @@
 Модуль откликов для HH Auto Apply
 """
 import logging
-import random
 import re
-import time
 from typing import List, Dict, Any
 
 from selenium.webdriver.common.by import By
@@ -13,6 +11,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 from core.session_manager import SessionManager
+from utils.browser_utils import BrowserUtils
 
 
 class ApplyModule:
@@ -29,6 +28,10 @@ class ApplyModule:
 
     def set_account(self, account: str):
         self._account = account
+
+    def _human_delay(self, delay_min: float, delay_max: float):
+        """Человекоподобная пауза из параметров задачи (без хардкода sleep)."""
+        BrowserUtils(self.driver).human_delay(delay_min, delay_max)
 
     def apply_to_vacancy(
         self,
@@ -48,6 +51,10 @@ class ApplyModule:
             dry_run: Только симуляция без реального отклика
             resume_id: ID резюме (для выбора в диалоге)
             delay_min, delay_max: диапазон человекоподобной задержки (сек)
+
+        Returns:
+            bool: True если отклик отправлен, False в противном случае
+                  (исключения наружу не выпускаются — только лог).
         """
         try:
             wait = WebDriverWait(self.driver, 10)
@@ -59,7 +66,7 @@ class ApplyModule:
 
             self.logger.info(f"Открываем вакансию: {vacancy_url}")
             self.driver.get(vacancy_url)
-            time.sleep(random.uniform(delay_min, delay_max))
+            self._human_delay(delay_min, delay_max)
 
             selectors = [
                 "//a[@data-qa='vacancy-response-link-top']",
@@ -85,7 +92,7 @@ class ApplyModule:
 
             apply_button.click()
             self.logger.info("Кнопка отклика нажата")
-            time.sleep(random.uniform(delay_min, delay_max))
+            self._human_delay(delay_min, delay_max)
 
             # Выбор резюме
             if resume_id:
@@ -138,7 +145,7 @@ class ApplyModule:
                     "Форма подтверждения не найдена — считаем ответ отправленным"
                 )
 
-            time.sleep(random.uniform(delay_min, delay_max))
+            self._human_delay(delay_min, delay_max)
             self.logger.info(f"Отклик на вакансию {vacancy_id} завершён")
             return True
 
@@ -167,7 +174,7 @@ class ApplyModule:
 
             if i < len(vacancy_urls) - 1 and not dry_run:
                 self.logger.info(f"Ожидание {delay:.1f} сек перед следующим откликом")
-                time.sleep(delay)
+                self._human_delay(delay, delay)
 
         self.logger.info(f"Пакетный отклик завершен: {results}")
         return results
