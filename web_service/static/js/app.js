@@ -4,7 +4,6 @@
  */
 
 // Глобальные переменные
-let currentJobSocket = null;
 let notificationTimeout = null;
 
 /**
@@ -107,6 +106,7 @@ function formatNumber(num) {
 async function fetchData(url, options = {}) {
     try {
         const response = await fetch(url, {
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
                 ...options.headers
@@ -152,48 +152,6 @@ async function putData(url, data) {
  */
 async function deleteData(url) {
     return fetchData(url, { method: 'DELETE' });
-}
-
-/**
- * Подключается к WebSocket для получения обновлений задачи
- */
-function connectJobWebSocket(jobId, onUpdate) {
-    if (currentJobSocket) {
-        currentJobSocket.close();
-    }
-    
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    
-    const socket = new WebSocket(wsUrl);
-    currentJobSocket = socket;
-    
-    socket.onopen = () => {
-        console.log(`WebSocket подключен для задачи ${jobId}`);
-        socket.send(JSON.stringify({ type: 'subscribe', job_id: jobId }));
-    };
-    
-    socket.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            if (onUpdate && typeof onUpdate === 'function') {
-                onUpdate(data);
-            }
-        } catch (error) {
-            console.error('Ошибка парсинга WebSocket сообщения:', error);
-        }
-    };
-    
-    socket.onerror = (error) => {
-        console.error('WebSocket ошибка:', error);
-    };
-    
-    socket.onclose = () => {
-        console.log('WebSocket соединение закрыто');
-        currentJobSocket = null;
-    };
-    
-    return socket;
 }
 
 /**
@@ -334,7 +292,15 @@ function showConfirmationModal(title, message, confirmText = 'Подтверди
         };
         
         confirmButton.onclick = handleConfirm;
-        modal.addEventListener('hidden.bs.modal', handleCancel);
+
+        // Разовый слушатель: срабатывает, если модалка закрыта без подтверждения
+        // (крестик, фон, Esc). Снимаем после закрытия, чтобы не «схлопывать»
+        // промисы последующих вызовов.
+        const hiddenHandler = () => {
+            modal.removeEventListener('hidden.bs.modal', hiddenHandler);
+            handleCancel();
+        };
+        modal.addEventListener('hidden.bs.modal', hiddenHandler);
         
         bsModal.show();
     });
@@ -345,7 +311,7 @@ function showConfirmationModal(title, message, confirmText = 'Подтверди
  */
 async function checkSystemStatus() {
     try {
-        const response = await fetch('/api/status');
+        const response = await fetch('/api/health', { credentials: 'include' });
         const statusElement = document.getElementById('footer-status');
         const indicatorElement = document.getElementById('status-indicator');
         

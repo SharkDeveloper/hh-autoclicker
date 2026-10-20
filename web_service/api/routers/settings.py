@@ -14,6 +14,25 @@ from core.security import encrypt_password
 router = APIRouter()
 
 
+def _build_settings_response(settings: Settings, current_user: User) -> SettingsResponse:
+    """
+    Собрать SettingsResponse: hh_login / resume_id берутся из таблицы users
+    (в таблице settings этих полей нет), пароль никогда не отдаётся наружу.
+    """
+    return SettingsResponse(
+        id=settings.id,
+        user_id=settings.user_id,
+        hh_login=current_user.hh_login,
+        hh_password=None,
+        resume_id=current_user.resume_id,
+        cover_letter=settings.cover_letter or "",
+        delay_min=settings.delay_min,
+        delay_max=settings.delay_max,
+        rate_limit=settings.rate_limit,
+        headless=settings.headless,
+    )
+
+
 @router.get("", response_model=SettingsResponse)
 async def get_settings(
     current_user: User = Depends(get_current_user),
@@ -34,7 +53,7 @@ async def get_settings(
         await db.commit()
         await db.refresh(settings)
 
-    return settings
+    return _build_settings_response(settings, current_user)
 
 
 @router.put("", response_model=SettingsResponse)
@@ -79,4 +98,4 @@ async def update_settings(
     await db.commit()
     await db.refresh(settings)
 
-    return settings
+    return _build_settings_response(settings, current_user)
