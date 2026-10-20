@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 from kafka import KafkaConsumer
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from db.session import AsyncSessionLocal
 from db.models import Job, Apply
@@ -47,17 +48,27 @@ async def process_result_message(message: Dict[str, Any]):
                     job.finished_at = datetime.fromisoformat(str(finished_at).replace("Z", "+00:00"))
                 except ValueError:
                     job.finished_at = datetime.utcnow()
+            owner_user_id = user_uuid or job.user_id
             for ad in applies:
-                session.add(Apply(
+                vacancy_id = str(ad.get("vacancy_id", ""))
+                if not vacancy_id:
+                    continue
+                # Дедупликация на уровне БД: UNIQUE(user_id, vacancy_id)
+                stmt = pg_insert(Apply).values(
                     job_id=job_uuid,
-                    user_id=user_uuid or job.user_id,
-                    vacancy_id=str(ad.get("vacancy_id", "")),
+                    user_id=owner_user_id,
+                    vacancy_id=vacancy_id,
                     vacancy_url=ad.get("vacancy_url", "") or "",
                     vacancy_title=ad.get("vacancy_title", "") or "",
                     company=ad.get("company", "") or "",
                     status=ad.get("status", "error"),
                     error_msg=ad.get("error_msg"),
-                ))
+                    applied_at=datetime.utcnow(),
+                ).on_conflict_do_nothing(
+                    index_elements=["user_id", "vacancy_id"],
+                    index_where=None,
+                )
+                await session.execute(stmt)
             await session.commit()
             logger.info(f"Результаты задачи {job_uuid} сохранены в БД")
         except Exception as e:
