@@ -112,7 +112,7 @@ class JobConsumer:
                 })
         return result
 
-    def _ensure_logged_in(self, user_id: str, hh_login: str, hh_password: str):
+    def _ensure_logged_in(self, user_id: str, hh_login: str, hh_password_enc: str):
         """Гарантировать, что браузер залогинен под указанным пользователем.
 
         Модель «одна сессия браузера, много пользователей»:
@@ -123,10 +123,21 @@ class JobConsumer:
         - если сохранённая сессия невалидна — свежий логин через AuthModule.
         """
         user_id = str(user_id)
-        driver = self.session_manager.get_driver()
 
         if self._current_user_id == user_id:
             return
+
+        # Расшифровка пароля может упасть, если Fernet-ключ не совпадает —
+        # даём понятный текст ошибки для UI.
+        try:
+            hh_password = self.decrypt_password(hh_password_enc)
+        except Exception:
+            raise RuntimeError(
+                "Не удалось расшифровать пароль hh.ru (проверьте FERNET_KEY). "
+                "Сохраните пароль заново в настройках."
+            )
+
+        driver = self.session_manager.get_driver()
 
         if self._current_user_id is not None:
             logger.info(
@@ -151,7 +162,11 @@ class JobConsumer:
         logger.info(f"Авторизация под {hh_login}...")
         ok = self.auth_module.login({"username": hh_login, "password": hh_password})
         if not ok or not self.auth_module.check_auth_status():
-            raise RuntimeError(f"Не удалось авторизоваться на hh.ru под логином {hh_login}")
+            raise RuntimeError(
+                f"Неверный логин или пароль hh.ru ({hh_login}), либо hh.ru "
+                "запросил подтверждение (CAPTCHA). Проверьте учётные данные "
+                "в настройках."
+            )
         self.session_manager.save_session()
         self._current_user_id = user_id
         self._current_login = hh_login
@@ -170,15 +185,13 @@ class JobConsumer:
         delay_range = job_data.get("delay_range", [1, 3])
         vacancy_urls = job_data.get("vacancy_urls", [])
 
-        hh_password = self.decrypt_password(hh_password_enc)
-
         conn = get_db_connection()
         update_job_status(conn, job_id, "running")
 
         # Логин «под задачу»: один Chromium, много пользователей.
         if not self.session_manager:
             self.init_browser_modules()
-        self._ensure_logged_in(user_id, hh_login, hh_password)
+        self._ensure_logged_in(user_id, hh_login, hh_password_enc)
 
         applies: List[Dict[str, Any]] = []
         total_sent = 0

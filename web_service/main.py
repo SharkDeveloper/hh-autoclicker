@@ -81,6 +81,10 @@ async def startup_event():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Страховка для существующих БД (созданных до появления колонок):
+        await conn.exec_driver_sql(
+            "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS error TEXT"
+        )
 
     # Запускаем блокирующий Kafka consumer в executor, не блокируя startup
     await start_kafka_consumer_background()
