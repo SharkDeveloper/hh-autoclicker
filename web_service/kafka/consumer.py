@@ -1,14 +1,15 @@
 """
 Kafka consumer для web-сервиса.
-Читает результаты выполнения задач из топика apply-results и записывает их в БД.
+Считывает результаты выполнения задач из топика apply-results и записывает их в БД.
 """
 import asyncio
 import json
 import logging
-import os
+import uuid
+from datetime import datetime
 from typing import Dict, Any
+
 from kafka import KafkaConsumer
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from db.session import AsyncSessionLocal
@@ -19,84 +20,81 @@ logger = logging.getLogger(__name__)
 
 
 async def process_result_message(message: Dict[str, Any]):
-    """
-    Обработать сообщение с результатами задачи.
-    
-    Args:
-        message: десериализованное JSON-сообщение из Kafka
-    """
-    job_id = message.get("job_id")
-    user_id = message.get("user_id")
-    status = message.get("status")  # "done" или "failed"
+    job_id_raw = message.get("job_id")
+    user_id_raw = message.get("user_id")
+    status = message.get("status")
     applies = message.get("applies", [])
     finished_at = message.get("finished_at")
-    
-    if not job_id:
+
+    if not job_id_raw:
         logger.error("Получено сообщение без job_id")
         return
-    
-    logger.info(f"Обработка результатов задачи {job_id}, статус {status}")
-    
+
+    try:
+        job_uuid = uuid.UUID(str(job_id_raw))
+        user_uuid = uuid.UUID(str(user_id_raw)) if user_id_raw else None
+    except (ValueError, TypeError) as e:
+        logger.error(f"Некорректный UUID в сообщении: {e}")
+        return
+
+    logger.info(f"Обработка результатов задачи {job_uuid}, статус {status}")
+
     async with AsyncSessionLocal() as session:
         try:
-            # Находим задачу
-            result = await session.execute(select(Job).where(Job.id == job_id))
+            result = await session.execute(select(Job).where(Job.id == job_uuid))
             job = result.scalar_one_or_none()
-            
+
             if not job:
-                logger.error(f"Задача {job_id} не найдена в БД")
+                logger.error(f"Задача {job_uuid} не найдена в БД")
                 return
-            
-            # Обновляем статус задачи
-            job.status = status
+
+            job.status = status or "done"
             if finished_at:
-                from datetime import datetime
-                # Преобразуем строку в datetime (если нужно)
-                # job.finished_at = datetime.fromisoformat(finished_at.replace('Z', '+00:00'))
-                pass
-            
-            # Сохраняем результаты откликов
+                try:
+                    job.finished_at = datetime.fromisoformat(
+                        str(finished_at).replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    job.finished_at = datetime.utcnow()
+
             for apply_data in applies:
                 apply = Apply(
-                    job_id=job_id,
-                    user_id=user_id,
-                    vacancy_id=apply_data.get("vacancy_id", ""),
-                    vacancy_url=apply_data.get("vacancy_url", ""),
-                    vacancy_title=apply_data.get("vacancy_title", ""),
-                    company=apply_data.get("company", ""),
+                    job_id=job_uuid,
+                    user_id=user_uuid or job.user_id,
+                    vacancy_id=str(apply_data.get("vacancy_id", "")),
+                    vacancy_url=apply_data.get("vacancy_url", "") or "",
+                    vacancy_title=apply_data.get("vacancy_title", "") or "",
+                    company=apply_data.get("company", "") or "",
                     status=apply_data.get("status", "error"),
                     error_msg=apply_data.get("error_msg"),
                 )
                 session.add(apply)
-            
+
             await session.commit()
-            logger.info(f"Результаты задачи {job_id} сохранены в БД")
-            
+            logger.info(f"Результаты задачи {job_uuid} сохранены в БД")
         except Exception as e:
-            logger.error(f"Ошибка при обработке результатов задачи {job_id}: {e}")
+            logger.error(f"Ошибка при обработке результатов задачи {job_uuid}: {e}")
             await session.rollback()
 
 
-def start_kafka_consumer():
-    """
-    Запустить Kafka consumer в отдельном потоке.
-    """
+def start_kafka_consumer(loop: asyncio.AbstractEventLoop):
     consumer = KafkaConsumer(
         KAFKA_TOPIC_RESULTS,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_deserializer=lambda v: json.loads(v.decode('utf-8')),
+        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         group_id="web-group",
-        auto_offset_reset='earliest',
+        auto_offset_reset="earliest",
         enable_auto_commit=True,
     )
-    
+
     logger.info(f"Kafka consumer запущен, слушает топик {KAFKA_TOPIC_RESULTS}")
-    
+
     try:
         for message in consumer:
             try:
-                # Запускаем обработку в asyncio event loop
-                asyncio.create_task(process_result_message(message.value))
+                asyncio.run_coroutine_threadsafe(
+                    process_result_message(message.value), loop
+                )
             except Exception as e:
                 logger.error(f"Ошибка при обработке сообщения Kafka: {e}")
     except KeyboardInterrupt:
@@ -108,20 +106,15 @@ def start_kafka_consumer():
 
 
 async def start_kafka_consumer_background():
-    """
-    Запустить Kafka consumer в фоновом режиме (asyncio task).
-    """
-    loop = asyncio.get_event_loop()
-    
-    # Запускаем consumer в отдельном потоке, чтобы не блокировать event loop
-    def run_consumer():
-        start_kafka_consumer()
-    
-    # Используем run_in_executor для запуска блокирующего consumer в отдельном потоке
-    await loop.run_in_executor(None, run_consumer)
+    """Запустить блокирующий Kafka consumer в отдельном потоке, не блокируя event loop."""
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, start_kafka_consumer, loop)
 
 
 if __name__ == "__main__":
-    # Для тестирования
     logging.basicConfig(level=logging.INFO)
-    start_kafka_consumer()
+    _loop = asyncio.new_event_loop()
+    try:
+        start_kafka_consumer(_loop)
+    finally:
+        _loop.close()
