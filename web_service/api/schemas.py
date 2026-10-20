@@ -82,6 +82,7 @@ class JobResponse(BaseModel):
     user_id: uuid.UUID
     mode: str
     status: str
+    error: Optional[str] = None
     filters: Optional[Dict[str, Any]] = None
     created_at: datetime
     started_at: Optional[datetime] = None
