@@ -12,7 +12,7 @@ from core.auth_module import AuthModule
 from consumer import JobConsumer
 
 # Настройка логирования
-logger = setup_logger(__name__)
+logger = setup_logger(__name__, "logs/worker.log")
 
 
 def init_browser_and_auth(hh_login: str, hh_password: str) -> SessionManager:
