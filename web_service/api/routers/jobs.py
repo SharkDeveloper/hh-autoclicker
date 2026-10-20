@@ -11,7 +11,7 @@ from db.session import get_db
 from db.models import User, Job, Settings
 from api.schemas import JobCreate, JobResponse, JobListResponse
 from api.deps import get_current_user
-from messaging.producer import publish_job
+from kafka.producer import publish_job
 
 router = APIRouter()
 
