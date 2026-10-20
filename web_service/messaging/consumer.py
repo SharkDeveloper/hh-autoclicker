@@ -1,7 +1,4 @@
-"""
-Kafka consumer для web-сервиса.
-Считывает результаты выполнения задач из топика apply-results и записывает их в БД.
-"""
+"""Kafka consumer для web-сервиса."""
 import asyncio
 import json
 import logging
@@ -37,39 +34,30 @@ async def process_result_message(message: Dict[str, Any]):
         logger.error(f"Некорректный UUID в сообщении: {e}")
         return
 
-    logger.info(f"Обработка результатов задачи {job_uuid}, статус {status}")
-
     async with AsyncSessionLocal() as session:
         try:
             result = await session.execute(select(Job).where(Job.id == job_uuid))
             job = result.scalar_one_or_none()
-
             if not job:
                 logger.error(f"Задача {job_uuid} не найдена в БД")
                 return
-
             job.status = status or "done"
             if finished_at:
                 try:
-                    job.finished_at = datetime.fromisoformat(
-                        str(finished_at).replace("Z", "+00:00")
-                    )
+                    job.finished_at = datetime.fromisoformat(str(finished_at).replace("Z", "+00:00"))
                 except ValueError:
                     job.finished_at = datetime.utcnow()
-
-            for apply_data in applies:
-                apply = Apply(
+            for ad in applies:
+                session.add(Apply(
                     job_id=job_uuid,
                     user_id=user_uuid or job.user_id,
-                    vacancy_id=str(apply_data.get("vacancy_id", "")),
-                    vacancy_url=apply_data.get("vacancy_url", "") or "",
-                    vacancy_title=apply_data.get("vacancy_title", "") or "",
-                    company=apply_data.get("company", "") or "",
-                    status=apply_data.get("status", "error"),
-                    error_msg=apply_data.get("error_msg"),
-                )
-                session.add(apply)
-
+                    vacancy_id=str(ad.get("vacancy_id", "")),
+                    vacancy_url=ad.get("vacancy_url", "") or "",
+                    vacancy_title=ad.get("vacancy_title", "") or "",
+                    company=ad.get("company", "") or "",
+                    status=ad.get("status", "error"),
+                    error_msg=ad.get("error_msg"),
+                ))
             await session.commit()
             logger.info(f"Результаты задачи {job_uuid} сохранены в БД")
         except Exception as e:
@@ -86,35 +74,19 @@ def start_kafka_consumer(loop: asyncio.AbstractEventLoop):
         auto_offset_reset="earliest",
         enable_auto_commit=True,
     )
-
     logger.info(f"Kafka consumer запущен, слушает топик {KAFKA_TOPIC_RESULTS}")
-
     try:
         for message in consumer:
             try:
-                asyncio.run_coroutine_threadsafe(
-                    process_result_message(message.value), loop
-                )
+                asyncio.run_coroutine_threadsafe(process_result_message(message.value), loop)
             except Exception as e:
                 logger.error(f"Ошибка при обработке сообщения Kafka: {e}")
     except KeyboardInterrupt:
-        logger.info("Kafka consumer остановлен по сигналу")
-    except Exception as e:
-        logger.error(f"Критическая ошибка в Kafka consumer: {e}")
+        logger.info("Kafka consumer остановлен")
     finally:
         consumer.close()
 
 
 async def start_kafka_consumer_background():
-    """Запустить блокирующий Kafka consumer в отдельном потоке, не блокируя event loop."""
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, start_kafka_consumer, loop)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    _loop = asyncio.new_event_loop()
-    try:
-        start_kafka_consumer(_loop)
-    finally:
-        _loop.close()

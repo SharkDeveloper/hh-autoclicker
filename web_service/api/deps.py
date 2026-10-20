@@ -10,8 +10,7 @@ from sqlalchemy import select
 
 from db.session import get_db
 from db.models import User
-from core.security import verify_token, ALGORITHM
-from core.config import SECRET_KEY
+from core.security import verify_token, ALGORITHM, SECRET_KEY
 
 security = HTTPBearer(auto_error=False)
 

@@ -1,6 +1,7 @@
 fastapi>=0.111
 uvicorn[standard]
-sqlalchemy>=2.0
+sqlalchemy[asyncio]>=2.0
+greenlet>=3.0
 asyncpg
 alembic
 python-jose[cryptography]

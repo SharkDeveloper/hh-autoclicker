@@ -17,6 +17,7 @@ from core.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from core.config import JWT_EXPIRE_MINUTES
+from api.deps import get_current_user
 
 router = APIRouter()
 
@@ -115,5 +116,3 @@ async def get_current_user(
     return current_user
 
 
-# Импорт зависимости после определения функций
-from api.deps import get_current_user
