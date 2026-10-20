@@ -6,9 +6,10 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
 from sqlalchemy import select
 
-from db.session import get_db
+from db.session import get_db, engine
 from db.models import User
 from core.security import verify_token, ALGORITHM, SECRET_KEY
 
@@ -57,6 +58,19 @@ async def get_current_user(
         )
     
     # Получаем пользователя из БД
+    # SQLite (только локальная разработка) хранит UUID как строки;
+    # на PostgreSQL сравнение UUID-колонки со строкой работает нативно.
+    try:
+        uid = uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный токен",
+        )
+    if engine.dialect.name != "postgresql":
+        user_id = str(uid)
+    else:
+        user_id = uid
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     
