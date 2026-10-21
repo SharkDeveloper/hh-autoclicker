@@ -30,6 +30,10 @@ class AuthModule:
         """Динамическое получение актуального драйвера"""
         return self.session.driver
 
+    def _get(self, url: str):
+        """Переход по URL с таймаутом и ретраями (см. SessionManager.safe_get)."""
+        self.session.safe_get(url)
+
     def _detect_login_error(self) -> str:
         """Понять причину неудачного входа по содержимому страницы.
 
@@ -96,7 +100,7 @@ class AuthModule:
             wait = WebDriverWait(self.driver, 15)
 
             # ── Шаг 1: страница выбора типа аккаунта ─────────────────────────
-            self.driver.get("https://hh.ru/account/login?backurl=%2F")
+            self._get("https://hh.ru/account/login?backurl=%2F")
             self.logger.info("Открыта страница входа hh.ru")
             time.sleep(3)
 
@@ -212,7 +216,7 @@ class AuthModule:
         try:
             # Если уже не на странице входа — проверяем текущую страницу
             if "account/login" in self.driver.current_url:
-                self.driver.get("https://hh.ru/")
+                self._get("https://hh.ru/")
                 time.sleep(3)
 
             # Страница входа → не авторизован
@@ -256,7 +260,7 @@ class AuthModule:
     def logout(self):
         """Выполнение выхода из hh.ru"""
         try:
-            self.driver.get("https://hh.ru/account/logout")
+            self._get("https://hh.ru/account/logout")
             self.logger.info("Выход выполнен успешно")
         except Exception as e:
             self.logger.error(f"Ошибка при выходе: {e}")

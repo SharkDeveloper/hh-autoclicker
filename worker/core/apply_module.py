@@ -26,6 +26,10 @@ class ApplyModule:
     def driver(self):
         return self.session.driver
 
+    def _get(self, url: str):
+        """Переход по URL с таймаутом и ретраями (см. SessionManager.safe_get)."""
+        self.session.safe_get(url)
+
     def set_account(self, account: str):
         self._account = account
 
@@ -66,7 +70,7 @@ class ApplyModule:
 
             # ── Этап 1: открываем страницу вакансии ───────────────────────
             self.logger.info(f"[Этап 1/5] Открываем вакансию {vacancy_id}: {vacancy_url}")
-            self.driver.get(vacancy_url)
+            self._get(vacancy_url)
             self._human_delay(delay_min, delay_max)
 
             # Вакансия удалена / недоступна — сразу пропускаем

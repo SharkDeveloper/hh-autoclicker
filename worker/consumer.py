@@ -87,7 +87,7 @@ class JobConsumer:
         driver = session_manager.get_driver()
         self.auth_module = AuthModule(session_manager)
         self.search_module = SearchModule(session_manager)
-        self.recommendations_module = RecommendationsModule(driver)
+        self.recommendations_module = RecommendationsModule(driver, session=session_manager)
         self.apply_module = ApplyModule(session_manager)
         self.resume_module = ResumeModule(session_manager)
 
@@ -118,6 +118,35 @@ class JobConsumer:
                     "company": "",
                 })
         return result
+
+    @staticmethod
+    def _friendly_error(raw: str) -> str:
+        """Преобразовать технический текст исключения Selenium/urllib3
+        в понятное пользователю сообщение. Сырая ошибка сохраняется в лог,
+        в БД/UI идёт только читаемый текст."""
+        s = raw or ""
+        low = s.lower()
+        if "read timed out" in low or "timed out" in low or "timeoutexception" in type(s) or "не загрузилась" in low:
+            return (
+                "Страница hh.ru не загрузилась за отведённое время "
+                "(таймаут 45с, 2 попытки). Возможные причины: нестабильная "
+                "сеть на сервере, высокая нагрузка или блокировка со стороны hh.ru. "
+                "Повторите запуск задачи позже."
+            )
+        if "connection refused" in low or "newconnectionerror" in low or "cannot connect" in low:
+            return (
+                "Нет соединения с hh.ru (сервер недоступен или блокирует запросы "
+                "с этого IP). Проверьте доступность сети на сервере и повторите запуск."
+            )
+        if "ssl" in low or "certificate" in low:
+            return "Ошибка SSL-сертификата при подключении к hh.ru. Повторите запуск позже."
+        if "chrome" in low and ("crash" in low or "not reachable" in low or "session deleted" in low):
+            return (
+                "Браузер воркера аварийно завершился во время работы. "
+                "Задача остановлена — запустите её заново."
+            )
+        # уже человекочитаемее (напр. «Неверный логин или пароль...») — оставляем как есть
+        return s[:500]
 
     def _ensure_logged_in(self, user_id: str, hh_login: str, hh_password_enc: str):
         """Гарантировать, что браузер залогинен под указанным пользователем.
@@ -305,8 +334,10 @@ class JobConsumer:
             self._ensure_logged_in(user_id, hh_login, hh_password_enc)
         except Exception as e:
             login_failed = True
-            error_text = str(e)
-            logger.error(f"Ошибка авторизации на hh.ru для задачи {job_id}: {error_text}")
+            raw_text = str(e)
+            # В лог — сырая техническая ошибка, в UI/БД — понятная человеку
+            error_text = self._friendly_error(raw_text)
+            logger.error(f"Ошибка авторизации на hh.ru для задачи {job_id}: {raw_text}")
             update_job_status(conn, job_id, "failed")
             try:
                 with conn.cursor() as cur:
@@ -433,8 +464,20 @@ class JobConsumer:
             }
 
         except Exception as e:
-            logger.error(f"Ошибка при обработке задачи {job_id}: {e}")
+            raw_text = str(e)
+            error_text = self._friendly_error(raw_text)
+            logger.error(f"Ошибка при обработке задачи {job_id}: {raw_text}", exc_info=True)
             update_job_status(conn, job_id, "failed")
+            try:
+                # Сохраняем понятную ошибку в БД — UI покажет её в карточке «Ошибка выполнения»
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE jobs SET error = %s WHERE id = %s",
+                        (error_text[:2000], job_id),
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
             return {
                 "job_id": job_id,
@@ -445,7 +488,7 @@ class JobConsumer:
                 "total_skipped": total_skipped,
                 "total_errors": total_errors,
                 "finished_at": datetime.utcnow().isoformat() + "Z",
-                "error": str(e),
+                "error": error_text,
             }
         finally:
             conn.close()
@@ -487,14 +530,16 @@ class JobConsumer:
                 "error_msg": None if success else "Кнопка отклика не найдена или отклик не отправлен",
             }
         except Exception as e:
-            logger.error(f"Ошибка при отклике на вакансию {vacancy_id}: {e}")
+            raw_text = str(e)
+            logger.error(f"Ошибка при отклике на вакансию {vacancy_id}: {raw_text}")
             result = {
                 "vacancy_id": vacancy_id,
                 "vacancy_url": vacancy_url,
                 "vacancy_title": vacancy_title,
                 "company": company,
                 "status": "error",
-                "error_msg": str(e),
+                # понятный текст вместо технических сообщений urllib3/Selenium
+                "error_msg": self._friendly_error(raw_text),
             }
 
         save_apply_result(conn, job_id, user_id, result)

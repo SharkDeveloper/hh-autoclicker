@@ -15,15 +15,25 @@ from utils.browser_utils import BrowserUtils
 class RecommendationsModule:
     """Обработка рекомендаций вакансий по resume_id"""
 
-    def __init__(self, driver):
+    def __init__(self, driver, session=None):
         """
         Инициализация модуля рекомендаций
 
         Args:
             driver: экземпляр WebDriver
+            session: опциональный SessionManager (для safe_get с ретраями)
         """
         self.driver = driver
+        self._session = session
         self.logger = logging.getLogger(__name__)
+
+    def _get(self, url: str):
+        """Переход по URL: через SessionManager.safe_get (таймаут+ретраи),
+        иначе — обычный driver.get."""
+        if self._session is not None:
+            self._session.safe_get(url)
+        else:
+            self.driver.get(url)
 
     def parse_recommendations(self, resume_id: str, max_pages: int = 5) -> List[Dict[str, str]]:
         """
@@ -55,7 +65,7 @@ class RecommendationsModule:
             self.logger.debug(f"Переход на страницу {page + 1}: {url}")
             
             try:
-                self.driver.get(url)
+                self._get(url)
                 BrowserUtils.human_delay(2, 4)  # Задержка для загрузки страницы
                 
                 # Проверяем, есть ли вакансии на странице

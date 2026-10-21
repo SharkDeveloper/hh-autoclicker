@@ -10,6 +10,9 @@ from typing import Optional
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import TimeoutException, WebDriverException
+
+import time
 
 from core.config_manager import ConfigManager
 
@@ -162,15 +165,60 @@ class SessionManager:
 
         try:
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            # Жёсткие таймауты: без них зависшая загрузка страницы hh.ru
+            # блокирует chromedriver на 120+ секунд (Read timed out).
+            # page_load — сколько ждём саму страницу; implicit/script —
+            # поиск элементов и JS. Короткие значения + WebDriverWait
+            # дают управляемые TimeoutException вместо зависания.
+            self.driver.set_page_load_timeout(45)
+            self.driver.implicitly_wait(0)
+            self.driver.set_script_timeout(30)
             self.driver.execute_script(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
-            self.logger.info("WebDriver успешно создан")
+            self.logger.info("WebDriver успешно создан (page_load=45s, script=30s)")
         except Exception as e:
             self.logger.error(f"Ошибка создания WebDriver: {e}")
             raise
 
         return self.driver
+
+    def safe_get(self, url: str, timeout: int = 45, retries: int = 2):
+        """Переход по URL с таймаутом и ретраями.
+
+        Обычный driver.get() при зависшей загрузке hh.ru блокирует хром
+        на 120+ секунд и порождает нечитаемую ошибку
+        'HTTPConnectionPool(host=localhost...): Read timed out'.
+        Здесь: ставим короткий page_load_timeout, ловим TimeoutException,
+        обрываем незавершённую загрузку через window.stop() и повторяем.
+        """
+        last_exc = None
+        for attempt in range(1, retries + 1):
+            try:
+                self.driver.set_page_load_timeout(timeout)
+                self.driver.get(url)
+                return
+            except TimeoutException as e:
+                last_exc = e
+                self.logger.warning(
+                    f"Загрузка страницы не уложилась в {timeout}с "
+                    f"(попытка {attempt}/{retries}): {url}"
+                )
+                # Останавливаем незавершённую загрузку, чтобы драйвер
+                # снова стал отзывчивым перед следующей попыткой
+                try:
+                    self.driver.execute_script("window.stop();")
+                except Exception:
+                    pass
+            except WebDriverException as e:
+                last_exc = e
+                self.logger.warning(
+                    f"Ошибка перехода на {url} (попытка {attempt}/{retries}): {e}"
+                )
+                time.sleep(2)
+        raise TimeoutException(
+            f"Страница не загрузилась за {timeout}с после {retries} попыток: {url}"
+        ) from last_exc
 
     def save_session(self):
         if self.driver:
