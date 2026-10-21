@@ -41,7 +41,7 @@ class SettingsBase(BaseModel):
     resume_id: Optional[str] = None
     cover_letter: Optional[str] = ""
     delay_min: int = Field(1, ge=1, le=10)
-    delay_max: int = Field(3, ge=1, le=30)
+    delay_max: int = Field(3, ge=1, le=3600)
     rate_limit: int = Field(20, ge=1, le=100)
     headless: bool = True
 

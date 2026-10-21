@@ -29,6 +29,10 @@ class SearchModule:
         """Динамическое получение актуального драйвера"""
         return self.session.driver
 
+    def _get(self, url: str):
+        """Переход по URL с таймаутом и ретраями (см. SessionManager.safe_get)."""
+        self.session.safe_get(url)
+
     def search_vacancies(self, query: Dict[str, Any]) -> List[str]:
         """
         Поиск вакансий по параметрам запроса
@@ -87,7 +91,7 @@ class SearchModule:
             self.logger.info(f"Поиск вакансий по URL: {url}")
 
             # Переход к результатам поиска
-            self.driver.get(url)
+            self._get(url)
             time.sleep(3)
 
             # Извлечение URL вакансий
@@ -166,7 +170,7 @@ class SearchModule:
             list: Список URL рекомендованных вакансий
         """
         try:
-            self.driver.get("https://hh.ru/applicant/recommendations")
+            self._get("https://hh.ru/applicant/recommendations")
             time.sleep(3)
 
             vacancy_urls = self._extract_vacancy_urls()

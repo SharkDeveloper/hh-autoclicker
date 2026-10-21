@@ -29,6 +29,10 @@ class ResumeModule:
         """Динамическое получение актуального драйвера"""
         return self.session.driver
 
+    def _get(self, url: str):
+        """Переход по URL с таймаутом и ретраями (см. SessionManager.safe_get)."""
+        self.session.safe_get(url)
+
     def get_resumes(self) -> List[Dict[str, Any]]:
         """
         Получение списка резюме пользователя
@@ -37,7 +41,7 @@ class ResumeModule:
             list: Список словарей с информацией о резюме
         """
         try:
-            self.driver.get("https://hh.ru/applicant/resumes")
+            self._get("https://hh.ru/applicant/resumes")
             time.sleep(3)
 
             resumes = []
@@ -93,7 +97,7 @@ class ResumeModule:
         try:
             wait = WebDriverWait(self.driver, 10)
             resume_url = f"https://hh.ru/resume/{resume_id}"
-            self.driver.get(resume_url)
+            self._get(resume_url)
             time.sleep(2)
 
             try:
@@ -127,7 +131,7 @@ class ResumeModule:
         """
         try:
             resume_url = f"https://hh.ru/resume/{resume_id}"
-            self.driver.get(resume_url)
+            self._get(resume_url)
             time.sleep(2)
 
             status_info = {

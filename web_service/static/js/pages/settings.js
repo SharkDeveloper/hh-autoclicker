@@ -92,7 +92,7 @@ function paint() {
               <div class="col-3 col-md-4">
                 <label class="form-label" for="st-dmax">до, с</label>
                 <input type="number" class="form-control" id="st-dmax" name="delay_max"
-                       min="1" max="30" value="${s.delay_max ?? 3}">
+                       min="1" max="3600" value="${s.delay_max ?? 3}">
               </div>
             </div>
             <div class="form-check form-switch mt-3">
