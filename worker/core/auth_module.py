@@ -22,11 +22,52 @@ class AuthModule:
         """
         self.session = session_manager
         self.logger = logging.getLogger(__name__)
+        # Причина последней неудачи входа (для понятного текста ошибки в UI)
+        self._last_error = ""
 
     @property
     def driver(self):
         """Динамическое получение актуального драйвера"""
         return self.session.driver
+
+    def _detect_login_error(self) -> str:
+        """Понять причину неудачного входа по содержимому страницы.
+
+        Возвращает человекочитаемый текст для пользователя (UI/ошибка задачи).
+        """
+        try:
+            url = self.driver.current_url or ""
+            source = self.driver.page_source or ""
+
+            # Капча / «я не робот» / SmartCaptcha
+            if any(t in source for t in ("SmartCaptcha", "captcha", "Are you sure")) \
+                    or "captcha" in url.lower():
+                return "hh.ru запросил подтверждение (CAPTCHA)"
+
+            # Сообщения об ошибке на странице входа
+            error_texts = []
+            for sel in (
+                "//div[@data-qa='login-error']",
+                "//*[contains(@class,'bloko-form-item-spotlight')]//parent::*",
+                "//span[contains(@data-qa,'error')]",
+                "//*[contains(@class,'error') and text()]",
+            ):
+                try:
+                    for el in self.driver.find_elements(By.XPATH, sel):
+                        txt = (el.text or "").strip()
+                        if txt and len(txt) < 200:
+                            error_texts.append(txt)
+                except Exception:
+                    continue
+            if error_texts:
+                uniq = list(dict.fromkeys(error_texts))
+                return "Ошибка hh.ru: " + "; ".join(uniq[:2])
+
+            if "account/login" in url:
+                return "Неверный логин или пароль hh.ru (остались на странице входа)"
+            return "Не удалось подтвердить вход (неизвестная причина)"
+        except Exception as e:
+            return f"Не удалось определить причину ошибки входа: {e}"
 
     def login(self, credentials: dict) -> bool:
         """
@@ -146,12 +187,16 @@ class AuthModule:
 
             # ── Проверка результата ───────────────────────────────────────────
             if self.check_auth_status():
-                self.logger.info("✓ Вход выполнен успешно")
+                self.logger.info("✓ Шаг 7: вход выполнен успешно")
                 return True
-            else:
-                self.logger.error("✗ Вход не выполнен — неверный логин/пароль или CAPTCHA")
-                self._save_debug_html("login_failed_debug.html")
-                return False
+
+            # Вход не удался — извлекаем причину со страницы, чтобы показать
+            # пользователю конкретную ошибку (неверный пароль / CAPTCHA).
+            reason = self._detect_login_error()
+            self.logger.error(f"✗ Шаг 7: вход не выполнен — {reason}")
+            self._last_error = reason
+            self._save_debug_html("login_failed_debug.html")
+            return False
 
         except Exception as e:
             self.logger.error(f"Ошибка при входе: {e}")

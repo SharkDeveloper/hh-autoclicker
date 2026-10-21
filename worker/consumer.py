@@ -146,6 +146,7 @@ class JobConsumer:
                 "Сохраните пароль заново в настройках."
             )
 
+        logger.info(f"[Этап 1/4] Проверка сессии hh.ru для пользователя {hh_login}...")
         driver = self.session_manager.get_driver()
 
         if self._current_user_id is not None:
@@ -160,15 +161,17 @@ class JobConsumer:
         self.session_manager.set_user(user_id)
 
         # Пробуем восстановить сохранённую сессию нового пользователя
+        logger.info("[Этап 2/4] Попытка восстановить сохранённую cookie-сессию...")
         driver.get("https://hh.ru/")
         if self.session_manager.restore_session():
             if self.auth_module.check_auth_status():
-                logger.info(f"Сессия восстановлена для {hh_login}")
+                logger.info(f"[Этап 2/4] ✓ Сессия восстановлена для {hh_login} — логин не требуется")
                 self._current_user_id = user_id
                 self._current_login = hh_login
                 return
+        logger.info("[Этап 2/4] Сохранённая сессия недействительна — выполняем свежий вход")
 
-        logger.info(f"Авторизация под {hh_login}...")
+        logger.info(f"[Этап 3/4] Авторизация под {hh_login}...")
         ok = self.auth_module.login({"username": hh_login, "password": hh_password})
         if not ok or not self.auth_module.check_auth_status():
             # Сбрасываем состояние, чтобы следующий запуск не считал пользователя
@@ -179,15 +182,19 @@ class JobConsumer:
                 driver.delete_all_cookies()
             except Exception:
                 pass
+            # Конкретная причина со страницы hh.ru (неверный пароль / CAPTCHA),
+            # если auth_module смог её определить.
+            reason = getattr(self.auth_module, "_last_error", "") or ""
             raise RuntimeError(
-                f"Неверный логин или пароль hh.ru ({hh_login}), либо hh.ru "
-                "запросил подтверждение (CAPTCHA). Проверьте учётные данные "
-                "в настройках и запустите задачу заново."
+                f"Вход на hh.ru не выполнен ({hh_login})"
+                + (f": {reason}" if reason else
+                   ": вероятно, неверный логин или пароль либо CAPTCHA")
+                + ". Проверьте учётные данные в настройках и запустите задачу заново."
             )
         self.session_manager.save_session()
         self._current_user_id = user_id
         self._current_login = hh_login
-        logger.info(f"Авторизован под {hh_login}")
+        logger.info(f"[Этап 3/4] ✓ Авторизован под {hh_login}, cookies сохранены")
 
     def _is_cancel_requested(self, job_id: str) -> bool:
         """Проверить флаг запроса остановки задачи (ставится API /jobs/{id}/stop).
@@ -232,6 +239,11 @@ class JobConsumer:
         vacancy_urls = job_data.get("vacancy_urls", [])
 
         conn = get_db_connection()
+
+        logger.info(
+            f"═══ [Этап 0] Задача {job_id} захвачена воркером "
+            f"(режим={mode}, лимит={rate_limit}) ═══"
+        )
 
         # Атомарный захват задачи: pending → running одним UPDATE.
         # Если задача уже отменена/удалена или её успел забрать другой воркер —
@@ -329,28 +341,52 @@ class JobConsumer:
 
         try:
             if mode == "auto":
+                logger.info("[Этап 4] Режим AUTO — поиск вакансий по фильтрам...")
                 vacancy_url_list = self.search_module.search_vacancies(filters)
                 vacancies = self._urls_to_vacancies(vacancy_url_list)
+                logger.info(f"[Этап 4] Найдено вакансий: {len(vacancies)} (берём первые {rate_limit})")
             elif mode == "recommendations":
+                logger.info(f"[Этап 4] Режим РЕКОМЕНДАЦИИ — парсинг по резюме {resume_id}...")
                 vacancies = self.recommendations_module.parse_recommendations(
                     resume_id, max_pages=5
                 )
+                logger.info(f"[Этап 4] Получено рекомендаций: {len(vacancies)}")
             elif mode == "manual":
                 vacancies = self._urls_to_vacancies(vacancy_urls)
+                logger.info(
+                    f"[Этап 4] Режим MANUAL — {len(vacancies)} URL из "
+                    f"{len(vacancy_urls)} передано"
+                )
             else:
                 raise ValueError(f"Неизвестный режим: {mode}")
 
+            if not vacancies:
+                logger.warning("[Этап 4] Вакансии не найдены — задача завершается как done")
+
             cancelled = False
-            for vacancy in vacancies[:rate_limit]:
+            total_vacancies = min(len(vacancies), rate_limit)
+            for idx, vacancy in enumerate(vacancies[:rate_limit], start=1):
                 # Проверка запроса остановки/удаления перед каждым откликом.
                 if self._is_cancel_requested(job_id):
-                    logger.info(f"Задача {job_id} остановлена по запросу пользователя")
+                    logger.info(
+                        f"[Остановка] Задача {job_id} остановлена по запросу "
+                        f"пользователя (обработано {idx - 1}/{total_vacancies})"
+                    )
                     update_job_status(conn, job_id, "cancelled")
                     cancelled = True
                     break
 
+                logger.info(
+                    f"───── [Этап 5.{idx}/{total_vacancies}] Вакансия "
+                    f"{vacancy.get('id')} «{vacancy.get('title') or 'без названия'}» "
+                    f"({vacancy.get('company') or 'компания не определена'}) ─────"
+                )
                 result = self._process_single_vacancy(
                     conn, job_id, user_id, vacancy, resume_id, cover_letter, delay_range
+                )
+                logger.info(
+                    f"[Этап 5.{idx}/{total_vacancies}] Итог: {result['status']}"
+                    + (f" ({result['error_msg']})" if result.get("error_msg") else "")
                 )
                 applies.append(result)
                 if result["status"] == "sent":
@@ -378,6 +414,12 @@ class JobConsumer:
             else:
                 update_job_status(conn, job_id, "done")
                 final_status = "done"
+
+            logger.info(
+                f"═══ [Завершение] Задача {job_id}: статус={final_status}, "
+                f"отправлено={total_sent}, пропущено={total_skipped}, "
+                f"ошибок={total_errors} ═══"
+            )
 
             return {
                 "job_id": job_id,

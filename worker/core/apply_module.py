@@ -64,10 +64,23 @@ class ApplyModule:
                 self.logger.info(f"[DRY RUN] Симуляция отклика на: {vacancy_url}")
                 return True
 
-            self.logger.info(f"Открываем вакансию: {vacancy_url}")
+            # ── Этап 1: открываем страницу вакансии ───────────────────────
+            self.logger.info(f"[Этап 1/5] Открываем вакансию {vacancy_id}: {vacancy_url}")
             self.driver.get(vacancy_url)
             self._human_delay(delay_min, delay_max)
 
+            # Вакансия удалена / недоступна — сразу пропускаем
+            body_text = ""
+            try:
+                body_text = self.driver.find_element(By.TAG_NAME, "body").text or ""
+            except Exception:
+                pass
+            if "Вакансия больше не доступна" in body_text or "Архивная вакансия" in body_text:
+                self.logger.warning(f"[Этап 1/5] Вакансия {vacancy_id} недоступна (архив)")
+                raise RuntimeError("Вакансия недоступна (удалена или в архиве)")
+
+            # ── Этап 2: ищем и нажимаем кнопку «Откликнуться» ─────────────
+            self.logger.info(f"[Этап 2/5] Ищем кнопку отклика (вакансия {vacancy_id})")
             selectors = [
                 "//a[@data-qa='vacancy-response-link-top']",
                 "//button[@data-qa='vacancy-response-link-top']",
@@ -87,14 +100,17 @@ class ApplyModule:
                     continue
 
             if not apply_button:
-                self.logger.warning(f"Кнопка отклика не найдена: {vacancy_url}")
+                self.logger.warning(f"[Этап 2/5] Кнопка отклика не найдена: {vacancy_url}")
                 return False
 
             apply_button.click()
-            self.logger.info("Кнопка отклика нажата")
+            self.logger.info("[Этап 2/5] Кнопка отклика нажата — открыта форма")
             self._human_delay(delay_min, delay_max)
 
-            # Выбор резюме
+            # ── Этап 3: выбор резюме в форме отклика ──────────────────────
+            self.logger.info(
+                f"[Этап 3/5] Выбор резюме (resume_id={resume_id or 'по умолчанию'})"
+            )
             if resume_id:
                 try:
                     resume_input = self.driver.find_element(
@@ -102,10 +118,11 @@ class ApplyModule:
                         f"//input[@data-qa='resume-input' and @value='{resume_id}']",
                     )
                     self.driver.execute_script("arguments[0].click();", resume_input)
-                    self.logger.info(f"Выбрано резюме {resume_id}")
+                    self.logger.info(f"[Этап 3/5] Выбрано резюме {resume_id}")
                 except NoSuchElementException:
                     self.logger.warning(
-                        f"Резюме {resume_id} не найдено в списке — используется по умолчанию"
+                        f"[Этап 3/5] Резюме {resume_id} не найдено в списке — "
+                        "используется по умолчанию"
                     )
             else:
                 try:
@@ -113,12 +130,16 @@ class ApplyModule:
                         By.XPATH, "//div[contains(@class, 'bloko-radio')]"
                     )
                     self.driver.execute_script("arguments[0].click();", resume_radio)
-                    self.logger.info("Выбрано резюме по умолчанию")
+                    self.logger.info("[Этап 3/5] Выбрано резюме по умолчанию")
                 except NoSuchElementException:
-                    pass
+                    self.logger.debug("[Этап 3/5] Выбор резюме не требуется")
 
-            # Сопроводительное письмо
+            # ── Этап 4: сопроводительное письмо ────────────────────────────
             if cover_letter:
+                self.logger.info(
+                    f"[Этап 4/5] Ввод сопроводительного письма "
+                    f"({len(cover_letter)} симв.)"
+                )
                 try:
                     letter_field = self.driver.find_element(
                         By.XPATH,
@@ -127,31 +148,49 @@ class ApplyModule:
                     )
                     letter_field.clear()
                     letter_field.send_keys(cover_letter)
-                    self.logger.info("Сопроводительное письмо добавлено")
+                    self.logger.info("[Этап 4/5] Сопроводительное письмо добавлено")
                 except NoSuchElementException:
-                    self.logger.debug("Поле сопроводительного письма не найдено")
+                    self.logger.warning(
+                        "[Этап 4/5] Поле сопроводительного письма не найдено — "
+                        "пропускаем (возможно, работодатель его отключил)"
+                    )
+            else:
+                self.logger.info("[Этап 4/5] Сопроводительное письмо не задано — пропуск")
 
-            # Отправка
+            # ── Этап 5: отправка формы + проверка результата ───────────────
+            self.logger.info("[Этап 5/5] Отправка отклика")
             try:
-                submit_button = self.driver.find_element(
-                    By.XPATH,
-                    "//button[@data-qa='vacancy-response-submit-popup' "
-                    "or contains(@data-qa, 'vacancy-response-submit')]",
+                submit_button = wait.until(
+                    EC.element_to_be_clickable(
+                        By.XPATH,
+                        "//button[@data-qa='vacancy-response-submit-popup' "
+                        "or contains(@data-qa, 'vacancy-response-submit')]",
+                    )
                 )
                 submit_button.click()
-                self.logger.info("Отклик отправлен")
-            except NoSuchElementException:
+                self.logger.info("[Этап 5/5] Кнопка «Отправить» нажата")
+            except (TimeoutException, NoSuchElementException):
                 self.logger.info(
-                    "Форма подтверждения не найдена — считаем ответ отправленным"
+                    "[Этап 5/5] Форма подтверждения не найдена — "
+                    "считаем ответ отправленным (отклик в 1 клик)"
                 )
 
             self._human_delay(delay_min, delay_max)
-            self.logger.info(f"Отклик на вакансию {vacancy_id} завершён")
-            return True
+
+            # Проверяем, что форма закрылась / появилось подтверждение.
+            sent_ok = self._verify_response_sent(wait)
+            if sent_ok:
+                self.logger.info(f"[Готово] Отклик на вакансию {vacancy_id} отправлен ✓")
+            else:
+                self.logger.warning(
+                    f"[Готово] Не удалось подтвердить отправку отклика "
+                    f"на вакансию {vacancy_id}"
+                )
+            return sent_ok
 
         except Exception as e:
             self.logger.error(f"Ошибка отклика на вакансию {vacancy_url}: {e}")
-            return False
+            raise
 
     def apply_batch(
         self,
@@ -184,3 +223,41 @@ class ApplyModule:
         if match:
             return match.group(1)
         return vacancy_url
+
+    def _verify_response_sent(self, wait: WebDriverWait) -> bool:
+        """Подтвердить, что отклик реально отправлен.
+
+        Признаки успеха:
+          - появилось сообщение «Ответ отправлен» / success-баннер;
+          - кнопка сменилась на «Отклик отправлен» (response-already);
+          - попап формы закрылся и кнопки отклика больше нет.
+        """
+        # 1. Явные подтверждения
+        for xpath in (
+            "//*[contains(@data-qa, 'success')]",
+            "//div[contains(text(), 'Ответ отправлен')]",
+            "//*[contains(text(), 'Отклик отправлен')]",
+            "//a[@data-qa='vacancy-response-link-top-already']",
+            "//button[@data-qa='vacancy-response-link-top-already']",
+        ):
+            try:
+                if self.driver.find_elements(By.XPATH, xpath):
+                    return True
+            except Exception:
+                continue
+
+        # 2. Попап формы должен исчезнуть
+        try:
+            popup = self.driver.find_elements(
+                By.XPATH, "//*[@data-qa='vacancy-response-popup']"
+            )
+            if not popup:
+                # Попапа нет — проверяем, что первичной кнопки тоже нет
+                remaining = self.driver.find_elements(
+                    By.XPATH, "//*[@data-qa='vacancy-response-link-top']"
+                )
+                return len(remaining) == 0
+        except Exception:
+            pass
+
+        return False
