@@ -46,6 +46,13 @@ class JobConsumer:
             group_id="worker-group",
             auto_offset_reset="earliest",
             enable_auto_commit=True,
+            # Задача выполняется минутами (Selenium) — отключаем лимиты
+            # max-poll-records/interval, иначе consumer «вылетает» из группы
+            # и задачи обрабатываются повторно / зависают.
+            max_poll_records=1,
+            max_poll_interval_ms=900000,   # 15 минут на одну задачу
+            session_timeout_ms=45000,
+            heartbeat_interval_ms=15000,
         )
         self.producer = KafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
@@ -120,7 +127,9 @@ class JobConsumer:
         - при смене пользователя сохраняем cookies предыдущего, чистим cookies,
           переключаем SessionManager и пробуем восстановить сессию из
           sessions/{user_id}.pkl;
-        - если сохранённая сессия невалидна — свежий логин через AuthModule.
+        - если сохранённая сессия невалидна — свежий логин через AuthModule;
+        - при неверном логине/пароле удалённая сессия сбрасывается, чтобы
+          следующая попытка не использовала битый cookie-файл.
         """
         user_id = str(user_id)
 
@@ -162,10 +171,18 @@ class JobConsumer:
         logger.info(f"Авторизация под {hh_login}...")
         ok = self.auth_module.login({"username": hh_login, "password": hh_password})
         if not ok or not self.auth_module.check_auth_status():
+            # Сбрасываем состояние, чтобы следующий запуск не считал пользователя
+            # залогиненным и не переиспользовал битые cookies.
+            self._current_user_id = None
+            self._current_login = None
+            try:
+                driver.delete_all_cookies()
+            except Exception:
+                pass
             raise RuntimeError(
                 f"Неверный логин или пароль hh.ru ({hh_login}), либо hh.ru "
                 "запросил подтверждение (CAPTCHA). Проверьте учётные данные "
-                "в настройках."
+                "в настройках и запустите задачу заново."
             )
         self.session_manager.save_session()
         self._current_user_id = user_id
@@ -173,7 +190,11 @@ class JobConsumer:
         logger.info(f"Авторизован под {hh_login}")
 
     def _is_cancel_requested(self, job_id: str) -> bool:
-        """Проверить флаг запроса остановки задачи (ставится API /jobs/{id}/stop)."""
+        """Проверить флаг запроса остановки задачи (ставится API /jobs/{id}/stop).
+
+        Также возвращает True, если задача удалена или её статус уже финальный
+        (cancelled/failed/done) — worker должен прервать цикл откликов.
+        """
         try:
             conn = get_db_connection()
             try:
@@ -188,7 +209,7 @@ class JobConsumer:
         if not row:
             return True  # задача удалена — останавливаемся
         status_val, filters = row[0], row[1]
-        if status_val == "cancelled":
+        if status_val in ("cancelled", "failed"):
             return True
         if isinstance(filters, str):
             try:
@@ -212,11 +233,26 @@ class JobConsumer:
 
         conn = get_db_connection()
 
-        # Задача могла быть отменена (pending → cancelled), пока лежала в очереди Kafka.
+        # Атомарный захват задачи: pending → running одним UPDATE.
+        # Если задача уже отменена/удалена или её успел забрать другой воркер —
+        # UPDATE не затронет строк, и мы пропустим задачу (иначе она «зависнет»
+        # в running навсегда и UI будет вечно грузить).
         with conn.cursor() as cur:
-            cur.execute("SELECT status FROM jobs WHERE id = %s", (job_id,))
-            row = cur.fetchone()
-        if not row or row[0] != "pending":
+            cur.execute(
+                """
+                UPDATE jobs SET status = 'running', started_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND status = 'pending'
+                RETURNING status
+                """,
+                (job_id,),
+            )
+            claimed = cur.fetchone()
+            if not claimed:
+                cur.execute("SELECT status FROM jobs WHERE id = %s", (job_id,))
+                row = cur.fetchone()
+        conn.commit()
+
+        if not claimed:
             current_status = row[0] if row else "удалена"
             logger.info(
                 f"Задача {job_id} пропущена: статус '{current_status}' (не pending)"
@@ -233,12 +269,58 @@ class JobConsumer:
                 "finished_at": datetime.utcnow().isoformat() + "Z",
             }
 
-        update_job_status(conn, job_id, "running")
+        # Задача могла быть остановлена между созданием и захватом.
+        if self._is_cancel_requested(job_id):
+            logger.info(f"Задача {job_id} отменена до начала выполнения")
+            update_job_status(conn, job_id, "cancelled")
+            conn.close()
+            return {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": "cancelled",
+                "applies": [],
+                "total_sent": 0,
+                "total_skipped": 0,
+                "total_errors": 0,
+                "finished_at": datetime.utcnow().isoformat() + "Z",
+            }
 
         # Логин «под задачу»: один Chromium, много пользователей.
-        if not self.session_manager:
-            self.init_browser_modules()
-        self._ensure_logged_in(user_id, hh_login, hh_password_enc)
+        login_failed = False
+        try:
+            if not self.session_manager:
+                self.init_browser_modules()
+            self._ensure_logged_in(user_id, hh_login, hh_password_enc)
+        except Exception as e:
+            login_failed = True
+            error_text = str(e)
+            logger.error(f"Ошибка авторизации на hh.ru для задачи {job_id}: {error_text}")
+            update_job_status(conn, job_id, "failed")
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE jobs SET error = %s WHERE id = %s",
+                        (error_text[:2000], job_id),
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            conn.close()
+            return {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": "failed",
+                "applies": [],
+                "total_sent": 0,
+                "total_skipped": 0,
+                "total_errors": 0,
+                "finished_at": datetime.utcnow().isoformat() + "Z",
+                "error": error_text,
+            }
+        finally:
+            if not login_failed:
+                conn.close()
+        conn = get_db_connection()
 
         applies: List[Dict[str, Any]] = []
         total_sent = 0
@@ -260,7 +342,7 @@ class JobConsumer:
 
             cancelled = False
             for vacancy in vacancies[:rate_limit]:
-                # Проверка запроса остановки перед каждым откликом.
+                # Проверка запроса остановки/удаления перед каждым откликом.
                 if self._is_cancel_requested(job_id):
                     logger.info(f"Задача {job_id} остановлена по запросу пользователя")
                     update_job_status(conn, job_id, "cancelled")
@@ -277,6 +359,19 @@ class JobConsumer:
                     total_skipped += 1
                 else:
                     total_errors += 1
+
+                # Публикуем промежуточный результат после каждого отклика —
+                # UI сразу видит прогресс и статусы (sent/skipped/error).
+                self.publish_result({
+                    "job_id": job_id,
+                    "user_id": user_id,
+                    "status": "running",
+                    "applies": [result],
+                    "total_sent": total_sent,
+                    "total_skipped": total_skipped,
+                    "total_errors": total_errors,
+                    "intermediate": True,
+                })
 
             if cancelled:
                 final_status = "cancelled"
@@ -378,16 +473,46 @@ class JobConsumer:
         try:
             for message in self.consumer:
                 job_data = message.value
-                logger.info(
-                    f"Задача {job_data['job_id']} от user_id={job_data['user_id']} "
-                    f"(mode={job_data['mode']})"
-                )
-                result = self.process_job(job_data)
-                self.publish_result(result)
+                try:
+                    logger.info(
+                        f"Задача {job_data['job_id']} от user_id={job_data['user_id']} "
+                        f"(mode={job_data['mode']})"
+                    )
+                    result = self.process_job(job_data)
+                    self.publish_result(result)
+                except Exception as e:
+                    # Ошибка одной задачи не должна ронять consumer —
+                    # иначе остальные задачи «зависнут» в pending/running.
+                    logger.error(f"Критическая ошибка обработки задачи: {e}", exc_info=True)
+                    try:
+                        job_id = job_data.get("job_id")
+                        if job_id:
+                            conn = get_db_connection()
+                            try:
+                                update_job_status(conn, job_id, "failed")
+                                with conn.cursor() as cur:
+                                    cur.execute(
+                                        "UPDATE jobs SET error = %s WHERE id = %s",
+                                        (f"Внутренняя ошибка worker: {e}"[:2000], job_id),
+                                    )
+                                conn.commit()
+                            finally:
+                                conn.close()
+                            self.publish_result({
+                                "job_id": job_id,
+                                "user_id": job_data.get("user_id"),
+                                "status": "failed",
+                                "applies": [],
+                                "total_sent": 0,
+                                "total_skipped": 0,
+                                "total_errors": 0,
+                                "finished_at": datetime.utcnow().isoformat() + "Z",
+                                "error": f"Внутренняя ошибка worker: {e}",
+                            })
+                    except Exception as inner:
+                        logger.error(f"Не удалось пометить задачу failed: {inner}")
         except KeyboardInterrupt:
             logger.info("Consumer остановлен по сигналу")
-        except Exception as e:
-            logger.error(f"Критическая ошибка в consumer: {e}")
         finally:
             self.consumer.close()
             self.producer.close()
