@@ -2,10 +2,12 @@
 Роутер для управления задачами на отклик.
 """
 import uuid
+from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
+from sqlalchemy.orm.attributes import flag_modified
 
 from db.session import get_db
 from db.models import User, Job, Settings
@@ -148,12 +150,19 @@ async def get_job(
     return job
 
 
-@router.delete("/{job_id}")
-async def cancel_job(
+@router.post("/{job_id}/stop")
+async def stop_job(
     job_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Остановить задачу.
+
+    - pending → cancelled (worker пропустит её при получении из Kafka);
+    - running → статус остаётся running, но worker проверит флаг перед каждым
+      откликом и корректно завершит задачу со статусом cancelled.
+    """
     result = await db.execute(
         select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
     )
@@ -165,13 +174,55 @@ async def cancel_job(
             detail="Задача не найдена",
         )
 
-    if job.status != "pending":
+    if job.status == "pending":
+        job.status = "cancelled"
+        job.finished_at = datetime.utcnow()
+        await db.commit()
+        return {"message": "Задача отменена"}
+
+    if job.status == "running":
+        filters = dict(job.filters or {})
+        filters["_cancel_requested"] = True
+        job.filters = filters
+        flag_modified(job, "filters")
+        await db.commit()
+        return {"message": "Остановка задачи запрошена"}
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Остановить можно только запущенную или ожидающую задачу",
+    )
+
+
+@router.delete("/{job_id}")
+async def delete_job(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Удалить задачу вместе с её откликами (ON DELETE CASCADE).
+
+    Запущенную задачу сначала нужно остановить.
+    """
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+
+    if not job:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Можно отменить только задачи в статусе pending",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Задача не найдена",
         )
 
-    job.status = "cancelled"
+    if job.status == "running":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Сначала остановите задачу",
+        )
+
+    await db.delete(job)
     await db.commit()
 
-    return {"message": "Задача отменена"}
+    return {"message": "Задача удалена"}

@@ -43,6 +43,14 @@ async def process_result_message(message: Dict[str, Any]):
                 logger.error(f"Задача {job_uuid} не найдена в БД")
                 return
             job.status = status or "done"
+            # Сохраняем текст ошибки (например, неверный логин/пароль hh.ru),
+            # чтобы UI мог показать причину пользователю.
+            if status == "failed":
+                err_text = message.get("error")
+                if err_text:
+                    job.error = str(err_text)[:2000]
+            elif status in ("done", "cancelled"):
+                job.error = None
             if finished_at:
                 try:
                     job.finished_at = datetime.fromisoformat(str(finished_at).replace("Z", "+00:00"))

@@ -111,7 +111,7 @@ def update_job_status(conn, job_id: str, status: str, finished_at=None) -> None:
         status: новый статус ('pending', 'running', 'done', 'failed')
         finished_at: datetime завершения (опционально, для статусов done/failed)
     """
-    valid_statuses = {'pending', 'running', 'done', 'failed'}
+    valid_statuses = {'pending', 'running', 'done', 'failed', 'cancelled'}
     if status not in valid_statuses:
         raise ValueError(f"Invalid status '{status}'. Must be one of {valid_statuses}")
     
@@ -121,9 +121,9 @@ def update_job_status(conn, job_id: str, status: str, finished_at=None) -> None:
                 cur.execute("""
                     UPDATE jobs 
                     SET status = %s, started_at = CURRENT_TIMESTAMP 
-                    WHERE id = %s
+                    WHERE id = %s AND status = 'pending'
                 """, (status, job_id))
-            elif status in ('done', 'failed'):
+            elif status in ('done', 'failed', 'cancelled'):
                 if finished_at is None:
                     finished_at = datetime.utcnow()
                 cur.execute("""

@@ -80,6 +80,8 @@ function filtersSummary(job) {
 }
 
 function jobCard(job) {
+  const isRunning = job.status === 'running';
+  const isStopping = isRunning && job.filters && job.filters._cancel_requested;
   return `
     <div class="col-12 col-sm-6 col-lg-4">
       <div class="card job-card h-100 shadow-sm" data-id="${escapeHtml(job.id)}"
@@ -91,10 +93,20 @@ function jobCard(job) {
           <div class="small text-secondary mb-1"><i class="bi bi-calendar3"></i> ${fmtDate(job.created_at)}</div>
           <div class="small text-secondary mb-2"><i class="bi bi-hash"></i> ${escapeHtml(shortId(job.id))}</div>
           <div class="flex-grow-1 small">${escapeHtml(filtersSummary(job))}</div>
-          <div class="d-flex gap-2 mt-3">
+          ${job.status === 'failed' && job.error
+            ? `<div class="small text-danger mt-1 text-truncate" title="${escapeHtml(job.error)}">
+                 <i class="bi bi-exclamation-circle"></i> ${escapeHtml(truncate(job.error, 70))}
+               </div>` : ''}
+          ${isStopping ? '<div class="small text-warning mt-1"><i class="bi bi-hourglass-split"></i> Останавливается…</div>' : ''}
+          <div class="d-flex gap-2 mt-3 flex-wrap">
             <a href="#/jobs/${escapeHtml(job.id)}" class="btn btn-sm btn-outline-primary btn-details">Детали</a>
-            ${job.status === 'pending'
-              ? `<button class="btn btn-sm btn-outline-danger btn-cancel" data-id="${escapeHtml(job.id)}">Отменить</button>`
+            ${(job.status === 'pending' || isRunning) && !isStopping
+              ? `<button class="btn btn-sm btn-outline-danger btn-stop" data-id="${escapeHtml(job.id)}" data-status="${escapeHtml(job.status)}">
+                   ${job.status === 'pending' ? 'Отменить' : 'Остановить'}</button>`
+              : ''}
+            ${!isRunning
+              ? `<button class="btn btn-sm btn-outline-secondary btn-delete" data-id="${escapeHtml(job.id)}" title="Удалить задачу">
+                   <i class="bi bi-trash"></i></button>`
               : ''}
           </div>
         </div>
@@ -120,8 +132,11 @@ function renderJobs() {
       card.addEventListener('mouseenter', () => { card.style.transform = 'translateY(-2px)'; card.classList.add('shadow'); });
       card.addEventListener('mouseleave', () => { card.style.transform = ''; card.classList.remove('shadow'); });
     });
-    area.querySelectorAll('.btn-cancel').forEach((btn) => {
-      btn.addEventListener('click', (e) => { e.stopPropagation(); onCancelJob(btn.dataset.id); });
+    area.querySelectorAll('.btn-stop').forEach((btn) => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); onStopJob(btn.dataset.id, btn.dataset.status); });
+    });
+    area.querySelectorAll('.btn-delete').forEach((btn) => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); onDeleteJob(btn.dataset.id); });
     });
   }
   const pag = document.getElementById('jobs-pagination');
@@ -145,16 +160,34 @@ function startJobsPollingIfNeeded() {
   }
 }
 
-async function onCancelJob(id) {
+async function onStopJob(id, status) {
+  const isPending = status === 'pending';
   const ok = await window.HHAutoApply.showConfirmationModal(
-    'Отменить задачу?', 'Действие необратимо.', 'Отменить', 'Назад');
+    isPending ? 'Отменить задачу?' : 'Остановить задачу?',
+    isPending
+      ? 'Задача не будет запущена.'
+      : 'Worker завершит задачу после текущего отклика. Уже отправленные отклики сохранятся.',
+    isPending ? 'Отменить' : 'Остановить', 'Назад');
+  if (!ok) return;
+  try {
+    const res = await api.stopJob(id);
+    window.HHAutoApply.showNotification(res?.message || (isPending ? 'Задача отменена' : 'Остановка запрошена'), 'success');
+    await reloadJobs();
+  } catch (e) {
+    window.HHAutoApply.showNotification(e.detail || 'Ошибка остановки', 'danger');
+  }
+}
+
+async function onDeleteJob(id) {
+  const ok = await window.HHAutoApply.showConfirmationModal(
+    'Удалить задачу?', 'Задача и её отклики будут удалены безвозвратно.', 'Удалить', 'Назад');
   if (!ok) return;
   try {
     await api.cancelJob(id);
-    window.HHAutoApply.showNotification('Задача отменена', 'success');
+    window.HHAutoApply.showNotification('Задача удалена', 'success');
     await reloadJobs();
   } catch (e) {
-    window.HHAutoApply.showNotification(e.detail || 'Ошибка отмены', 'danger');
+    window.HHAutoApply.showNotification(e.detail || 'Ошибка удаления', 'danger');
   }
 }
 

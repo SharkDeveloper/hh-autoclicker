@@ -79,7 +79,8 @@ export const api = {
   getJobs: (page = 1, pageSize = 20) => GET(`/api/jobs?page=${page}&page_size=${pageSize}`),
   getJob: (id) => GET(`/api/jobs/${id}`),
   createJob: (data) => POST('/api/jobs', data),
-  cancelJob: (id) => DELETE(`/api/jobs/${id}`),
+  cancelJob: (id) => DELETE(`/api/jobs/${id}`),          // удалить задачу
+  stopJob: (id) => POST(`/api/jobs/${id}/stop`),        // отменить pending / остановить running
 
   getStats: () => GET('/api/stats'),
   getHistory: (params = {}) => GET('/api/stats/history?' + new URLSearchParams(params)),

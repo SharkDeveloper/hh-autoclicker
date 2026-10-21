@@ -53,6 +53,7 @@ class Job(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     mode = Column(String(50), nullable=False)
     status = Column(String(50), nullable=False, default="pending")
+    error = Column(Text, nullable=True)  # текст ошибки (например, неверный логин/пароль hh.ru)
     filters = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     started_at = Column(DateTime, nullable=True)

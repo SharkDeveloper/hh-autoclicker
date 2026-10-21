@@ -112,7 +112,7 @@ class JobConsumer:
                 })
         return result
 
-    def _ensure_logged_in(self, user_id: str, hh_login: str, hh_password: str):
+    def _ensure_logged_in(self, user_id: str, hh_login: str, hh_password_enc: str):
         """Гарантировать, что браузер залогинен под указанным пользователем.
 
         Модель «одна сессия браузера, много пользователей»:
@@ -123,10 +123,21 @@ class JobConsumer:
         - если сохранённая сессия невалидна — свежий логин через AuthModule.
         """
         user_id = str(user_id)
-        driver = self.session_manager.get_driver()
 
         if self._current_user_id == user_id:
             return
+
+        # Расшифровка пароля может упасть, если Fernet-ключ не совпадает —
+        # даём понятный текст ошибки для UI.
+        try:
+            hh_password = self.decrypt_password(hh_password_enc)
+        except Exception:
+            raise RuntimeError(
+                "Не удалось расшифровать пароль hh.ru (проверьте FERNET_KEY). "
+                "Сохраните пароль заново в настройках."
+            )
+
+        driver = self.session_manager.get_driver()
 
         if self._current_user_id is not None:
             logger.info(
@@ -151,11 +162,40 @@ class JobConsumer:
         logger.info(f"Авторизация под {hh_login}...")
         ok = self.auth_module.login({"username": hh_login, "password": hh_password})
         if not ok or not self.auth_module.check_auth_status():
-            raise RuntimeError(f"Не удалось авторизоваться на hh.ru под логином {hh_login}")
+            raise RuntimeError(
+                f"Неверный логин или пароль hh.ru ({hh_login}), либо hh.ru "
+                "запросил подтверждение (CAPTCHA). Проверьте учётные данные "
+                "в настройках."
+            )
         self.session_manager.save_session()
         self._current_user_id = user_id
         self._current_login = hh_login
         logger.info(f"Авторизован под {hh_login}")
+
+    def _is_cancel_requested(self, job_id: str) -> bool:
+        """Проверить флаг запроса остановки задачи (ставится API /jobs/{id}/stop)."""
+        try:
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT status, filters FROM jobs WHERE id = %s", (job_id,))
+                    row = cur.fetchone()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Ошибка при проверке флага остановки задачи {job_id}: {e}")
+            return False
+        if not row:
+            return True  # задача удалена — останавливаемся
+        status_val, filters = row[0], row[1]
+        if status_val == "cancelled":
+            return True
+        if isinstance(filters, str):
+            try:
+                filters = json.loads(filters)
+            except ValueError:
+                filters = {}
+        return bool((filters or {}).get("_cancel_requested"))
 
     def process_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         job_id = job_data["job_id"]
@@ -170,15 +210,35 @@ class JobConsumer:
         delay_range = job_data.get("delay_range", [1, 3])
         vacancy_urls = job_data.get("vacancy_urls", [])
 
-        hh_password = self.decrypt_password(hh_password_enc)
-
         conn = get_db_connection()
+
+        # Задача могла быть отменена (pending → cancelled), пока лежала в очереди Kafka.
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM jobs WHERE id = %s", (job_id,))
+            row = cur.fetchone()
+        if not row or row[0] != "pending":
+            current_status = row[0] if row else "удалена"
+            logger.info(
+                f"Задача {job_id} пропущена: статус '{current_status}' (не pending)"
+            )
+            conn.close()
+            return {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": current_status if row else "cancelled",
+                "applies": [],
+                "total_sent": 0,
+                "total_skipped": 0,
+                "total_errors": 0,
+                "finished_at": datetime.utcnow().isoformat() + "Z",
+            }
+
         update_job_status(conn, job_id, "running")
 
         # Логин «под задачу»: один Chromium, много пользователей.
         if not self.session_manager:
             self.init_browser_modules()
-        self._ensure_logged_in(user_id, hh_login, hh_password)
+        self._ensure_logged_in(user_id, hh_login, hh_password_enc)
 
         applies: List[Dict[str, Any]] = []
         total_sent = 0
@@ -198,7 +258,15 @@ class JobConsumer:
             else:
                 raise ValueError(f"Неизвестный режим: {mode}")
 
+            cancelled = False
             for vacancy in vacancies[:rate_limit]:
+                # Проверка запроса остановки перед каждым откликом.
+                if self._is_cancel_requested(job_id):
+                    logger.info(f"Задача {job_id} остановлена по запросу пользователя")
+                    update_job_status(conn, job_id, "cancelled")
+                    cancelled = True
+                    break
+
                 result = self._process_single_vacancy(
                     conn, job_id, user_id, vacancy, resume_id, cover_letter, delay_range
                 )
@@ -210,12 +278,16 @@ class JobConsumer:
                 else:
                     total_errors += 1
 
-            update_job_status(conn, job_id, "done")
+            if cancelled:
+                final_status = "cancelled"
+            else:
+                update_job_status(conn, job_id, "done")
+                final_status = "done"
 
             return {
                 "job_id": job_id,
                 "user_id": user_id,
-                "status": "done",
+                "status": final_status,
                 "applies": applies,
                 "total_sent": total_sent,
                 "total_skipped": total_skipped,

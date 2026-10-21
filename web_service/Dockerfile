@@ -20,7 +20,7 @@ RUN chmod +x /entrypoint.sh
 
 # Переменные окружения
 ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1ёё
+ENV PYTHONUNBUFFERED=1
 
 ENTRYPOINT ["/entrypoint.sh"]
 
