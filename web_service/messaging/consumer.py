@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from kafka import KafkaConsumer
@@ -15,6 +15,17 @@ from db.models import Job, Apply
 from core.config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC_RESULTS
 
 logger = logging.getLogger(__name__)
+
+
+def _utcnow_naive() -> datetime:
+    """Сейчас в UTC как naive datetime (колонки DateTime без tz)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 async def process_result_message(message: Dict[str, Any]):
@@ -40,9 +51,20 @@ async def process_result_message(message: Dict[str, Any]):
             result = await session.execute(select(Job).where(Job.id == job_uuid))
             job = result.scalar_one_or_none()
             if not job:
-                logger.error(f"Задача {job_uuid} не найдена в БД")
+                # Задача удалена пользователем во время выполнения —
+                # игнорируем результат.
+                logger.info(f"Задача {job_uuid} не найдена в БД (возможно удалена), результат пропущен")
+                return
+            # Не перетираем статус, если пользователь уже нажал «Отменить/Остановить»
+            if job.status == "cancelled":
+                logger.info(f"Задача {job_uuid} уже отменена — статус не меняем")
                 return
             job.status = status or "done"
+            # Промежуточное сообщение worker'а (applies по мере выполнения) —
+            # не меняем статус, только дописываем отклики.
+            is_intermediate = bool(message.get("intermediate"))
+            if is_intermediate:
+                job.status = "running"
             # Сохраняем текст ошибки (например, неверный логин/пароль hh.ru),
             # чтобы UI мог показать причину пользователю.
             if status == "failed":
@@ -51,11 +73,13 @@ async def process_result_message(message: Dict[str, Any]):
                     job.error = str(err_text)[:2000]
             elif status in ("done", "cancelled"):
                 job.error = None
-            if finished_at:
+            if finished_at and not is_intermediate:
                 try:
-                    job.finished_at = datetime.fromisoformat(str(finished_at).replace("Z", "+00:00"))
+                    job.finished_at = _to_naive_utc(
+                        datetime.fromisoformat(str(finished_at).replace("Z", "+00:00"))
+                    )
                 except ValueError:
-                    job.finished_at = datetime.utcnow()
+                    job.finished_at = _utcnow_naive()
             owner_user_id = user_uuid or job.user_id
             for ad in applies:
                 vacancy_id = str(ad.get("vacancy_id", ""))
@@ -71,14 +95,14 @@ async def process_result_message(message: Dict[str, Any]):
                     company=ad.get("company", "") or "",
                     status=ad.get("status", "error"),
                     error_msg=ad.get("error_msg"),
-                    applied_at=datetime.utcnow(),
+                    applied_at=_utcnow_naive(),
                 ).on_conflict_do_nothing(
                     index_elements=["user_id", "vacancy_id"],
                     index_where=None,
                 )
                 await session.execute(stmt)
             await session.commit()
-            logger.info(f"Результаты задачи {job_uuid} сохранены в БД")
+            logger.info(f"Результаты задачи {job_uuid} сохранены в БД (status={job.status})")
         except Exception as e:
             logger.error(f"Ошибка при обработке результатов задачи {job_uuid}: {e}")
             await session.rollback()
@@ -92,6 +116,9 @@ def start_kafka_consumer(loop: asyncio.AbstractEventLoop):
         group_id="web-group",
         auto_offset_reset="earliest",
         enable_auto_commit=True,
+        # Обработка идёт через run_coroutine_threadsafe без блокировок —
+        # стандартных лимитов достаточно, но увеличим интервал на всякий.
+        max_poll_interval_ms=300000,
     )
     logger.info(f"Kafka consumer запущен, слушает топик {KAFKA_TOPIC_RESULTS}")
     try:
