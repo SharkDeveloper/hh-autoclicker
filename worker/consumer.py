@@ -172,6 +172,31 @@ class JobConsumer:
         self._current_login = hh_login
         logger.info(f"Авторизован под {hh_login}")
 
+    def _is_cancel_requested(self, job_id: str) -> bool:
+        """Проверить флаг запроса остановки задачи (ставится API /jobs/{id}/stop)."""
+        try:
+            conn = get_db_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT status, filters FROM jobs WHERE id = %s", (job_id,))
+                    row = cur.fetchone()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"Ошибка при проверке флага остановки задачи {job_id}: {e}")
+            return False
+        if not row:
+            return True  # задача удалена — останавливаемся
+        status_val, filters = row[0], row[1]
+        if status_val == "cancelled":
+            return True
+        if isinstance(filters, str):
+            try:
+                filters = json.loads(filters)
+            except ValueError:
+                filters = {}
+        return bool((filters or {}).get("_cancel_requested"))
+
     def process_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         job_id = job_data["job_id"]
         user_id = job_data["user_id"]
@@ -186,6 +211,28 @@ class JobConsumer:
         vacancy_urls = job_data.get("vacancy_urls", [])
 
         conn = get_db_connection()
+
+        # Задача могла быть отменена (pending → cancelled), пока лежала в очереди Kafka.
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM jobs WHERE id = %s", (job_id,))
+            row = cur.fetchone()
+        if not row or row[0] != "pending":
+            current_status = row[0] if row else "удалена"
+            logger.info(
+                f"Задача {job_id} пропущена: статус '{current_status}' (не pending)"
+            )
+            conn.close()
+            return {
+                "job_id": job_id,
+                "user_id": user_id,
+                "status": current_status if row else "cancelled",
+                "applies": [],
+                "total_sent": 0,
+                "total_skipped": 0,
+                "total_errors": 0,
+                "finished_at": datetime.utcnow().isoformat() + "Z",
+            }
+
         update_job_status(conn, job_id, "running")
 
         # Логин «под задачу»: один Chromium, много пользователей.
@@ -211,7 +258,15 @@ class JobConsumer:
             else:
                 raise ValueError(f"Неизвестный режим: {mode}")
 
+            cancelled = False
             for vacancy in vacancies[:rate_limit]:
+                # Проверка запроса остановки перед каждым откликом.
+                if self._is_cancel_requested(job_id):
+                    logger.info(f"Задача {job_id} остановлена по запросу пользователя")
+                    update_job_status(conn, job_id, "cancelled")
+                    cancelled = True
+                    break
+
                 result = self._process_single_vacancy(
                     conn, job_id, user_id, vacancy, resume_id, cover_letter, delay_range
                 )
@@ -223,12 +278,16 @@ class JobConsumer:
                 else:
                     total_errors += 1
 
-            update_job_status(conn, job_id, "done")
+            if cancelled:
+                final_status = "cancelled"
+            else:
+                update_job_status(conn, job_id, "done")
+                final_status = "done"
 
             return {
                 "job_id": job_id,
                 "user_id": user_id,
-                "status": "done",
+                "status": final_status,
                 "applies": applies,
                 "total_sent": total_sent,
                 "total_skipped": total_skipped,

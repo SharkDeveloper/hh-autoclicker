@@ -54,12 +54,12 @@ async def get_stats(
     skipped_count = status_counts.get("skipped", 0)
     error_count = status_counts.get("error", 0)
     
-    # Активные задачи (running)
+    # Активные задачи (pending + running)
     active_jobs_result = await db.execute(
         select(func.count(Job.id)).where(
             and_(
                 Job.user_id == current_user.id,
-                Job.status == "running"
+                Job.status.in_(["running", "pending"])
             )
         )
     )
