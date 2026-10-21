@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "yandex-search": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@yandex-cloud/mcp",
+        "-s",
+        "search",
+        "-p",
+        "",
+        "-H",
+        "Folder-Id:",
+        ""
+      ]
+    },
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "~/Projects/hh-autoclicker"
+      ]
+    },
+    "codegen": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/codegen-sh/codegen-sdk.git#egg=codegen-mcp-server&subdirectory=codegen-examples/examples/codegen-mcp-server",
+        "codegen-mcp-server"
+      ]
+    }
+  }
+}

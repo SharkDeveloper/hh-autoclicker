@@ -1,0 +1,211 @@
+"""
+Менеджер сессий для HH Auto Apply
+"""
+import logging
+import os
+import pickle
+import subprocess
+from typing import Optional
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+
+from core.config_manager import ConfigManager
+
+
+def _find_chromium_binary() -> str:
+    """
+    Поиск исполняемого файла Chromium в системе.
+    """
+    env_path = os.environ.get("CHROMIUM_BINARY", "")
+    if env_path and os.path.exists(env_path):
+        return env_path
+
+    for cmd in ("chromium", "chromium-browser", "google-chrome"):
+        try:
+            result = subprocess.run(["which", cmd], capture_output=True, text=True)
+            path = result.stdout.strip()
+            if path and os.path.exists(path):
+                return path
+        except Exception:
+            pass
+
+    for p in (
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/run/current-system/sw/bin/chromium",
+    ):
+        if os.path.exists(p):
+            return p
+
+    return "chromium"
+
+
+def _find_chromedriver_binary() -> str:
+    """
+    Поиск исполняемого файла chromedriver в системе.
+    Поддерживает как CHROMEDRIVER_BINARY, так и CHROMEDRIVER_PATH (совместимость с .env).
+    """
+    env_path = (
+        os.environ.get("CHROMEDRIVER_BINARY")
+        or os.environ.get("CHROMEDRIVER_PATH", "")
+    )
+    if env_path and os.path.exists(env_path):
+        return env_path
+
+    try:
+        result = subprocess.run(["which", "chromedriver"], capture_output=True, text=True)
+        path = result.stdout.strip()
+        if path and os.path.exists(path):
+            return path
+    except Exception:
+        pass
+
+    for p in ("/usr/bin/chromedriver", "/usr/lib/chromium/chromedriver"):
+        if os.path.exists(p):
+            return p
+
+    return "chromedriver"
+
+
+class SessionManager:
+    """Управление сессиями браузера (мультипользовательский режим).
+
+    Worker держит один экземпляр Chromium. Cookies каждого пользователя
+    сохраняются в отдельный файл sessions/{user_id}.pkl и восстанавливаются
+    при переключении между пользователями.
+    """
+
+    def __init__(self, config: Optional[ConfigManager] = None):
+        """
+        Инициализация менеджера сессий.
+
+        Args:
+            config: Экземпляр ConfigManager. Если None — загружается из
+                    CONFIG_PATH (по умолчанию config/default.json).
+        """
+        if config is None:
+            config = ConfigManager(os.environ.get("CONFIG_PATH", "config/default.json"))
+        self.config = config
+        self.driver: Optional[webdriver.Chrome] = None
+        self.session_dir = os.environ.get("SESSIONS_DIR", "sessions")
+        os.makedirs(self.session_dir, exist_ok=True)
+        self._current_user: Optional[str] = None
+        self.session_file = os.path.join(self.session_dir, "default.pkl")
+        self.logger = logging.getLogger(__name__)
+
+    def set_user(self, user_id: str):
+        """Переключить менеджера на другого пользователя.
+
+        При смене пользователя cookies предыдущего сохраняются на диск,
+        а session_file переназначается на файл нового пользователя.
+        """
+        user_id = str(user_id)
+        if self._current_user == user_id:
+            return
+        if self._current_user is not None and self.driver is not None:
+            self.save_session()
+            self.logger.info(
+                f"Cookies сохранены: {os.path.join(self.session_dir, self._current_user + '.pkl')}"
+            )
+        self._current_user = user_id
+        self.session_file = os.path.join(self.session_dir, f"{user_id}.pkl")
+        self.logger.info(f"SessionManager переключён на пользователя {user_id}")
+
+    def get_driver(self) -> webdriver.Chrome:
+        """Вернуть драйвер, создав его при необходимости."""
+        if self.driver is None:
+            self.create_driver()
+        return self.driver
+
+    def create_driver(self) -> webdriver.Chrome:
+        """Создание и настройка WebDriver."""
+        chrome_options = Options()
+
+        chromium_binary = _find_chromium_binary()
+        chrome_options.binary_location = chromium_binary
+        self.logger.info(f"Используется Chromium: {chromium_binary}")
+
+        app_settings = self.config.get_application_settings()
+
+        # headless: env имеет приоритет над JSON-конфигом
+        headless = os.environ.get(
+            "WORKER_HEADLESS",
+            str(app_settings.get("headless", True)),
+        ).lower() in ("true", "1", "yes")
+
+        if headless:
+            chrome_options.add_argument("--headless=new")
+
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option("useAutomationExtension", False)
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--remote-debugging-port=0")
+
+        user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/138.0.0.0 Safari/537.36"
+        )
+        chrome_options.add_argument(f"user-agent={user_agent}")
+
+        chromedriver_binary = _find_chromedriver_binary()
+        self.logger.info(f"Используется chromedriver: {chromedriver_binary}")
+        service = Service(executable_path=chromedriver_binary)
+
+        try:
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.driver.execute_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            )
+            self.logger.info("WebDriver успешно создан")
+        except Exception as e:
+            self.logger.error(f"Ошибка создания WebDriver: {e}")
+            raise
+
+        return self.driver
+
+    def save_session(self):
+        if self.driver:
+            try:
+                cookies = self.driver.get_cookies()
+                with open(self.session_file, "wb") as f:
+                    pickle.dump(cookies, f)
+                self.logger.info(f"Сессия сохранена в {self.session_file}")
+            except Exception as e:
+                self.logger.error(f"Ошибка сохранения сессии: {e}")
+
+    def restore_session(self) -> bool:
+        try:
+            with open(self.session_file, "rb") as f:
+                cookies = pickle.load(f)
+            if self.driver:
+                for cookie in cookies:
+                    try:
+                        self.driver.add_cookie(cookie)
+                    except Exception as e:
+                        self.logger.debug(f"Пропущен cookie при восстановлении: {e}")
+                self.logger.info(f"Cookies восстановлены: {self.session_file}")
+                return True
+        except FileNotFoundError:
+            self.logger.warning(f"Файл сессии не найден: {self.session_file}")
+        except Exception as e:
+            self.logger.error(f"Ошибка восстановления сессии: {e}")
+        return False
+
+    def close(self):
+        if self.driver:
+            try:
+                self.save_session()
+                self.driver.quit()
+                self.driver = None
+                self.logger.info("Сессия браузера закрыта")
+            except Exception as e:
+                self.logger.error(f"Ошибка закрытия сессии браузера: {e}")
